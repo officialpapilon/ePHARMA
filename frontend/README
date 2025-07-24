@@ -1,0 +1,230 @@
+# PHARMACY MANAGEMENT SYSTEM
+completed components:
+      1.STORE MANAGEMENT
+	  2.DISPENSING MODULE
+	  3.CASHIER MODULE
+				
+				
+				PHARMACY SYSTEM END POINTS
+     PHARMACY MODULE
+1.DISPENSING:
+(a) PATIENTS: (view,add)
+	id
+	full_name
+	phone
+	age 
+	
+(b) MEDICINES: (view details)
+	id
+	product_name
+	product_category
+	updated_quantity
+	unit
+	selling_price
+	expire_date
+	batch_number = optional
+	barcode = for future use
+	
+(c) CART
+    (send to cashier)
+	transaction_id
+	patient_id
+	product_purchased
+	product_quantity
+	total_price
+		
+2. DISPENSED: (view)
+	transaction_id
+	transaction_status 
+	customer_id = patient_id
+	product_purchased = medicine_id
+	product_purchase = product_quantity
+	total_price = sum of items price
+	transaction_status
+	created_by
+	created_at
+	
+3. STOCK MANAGER
+  (A)MEDICINES: (view details, add, edit,delete)
+	id
+	product_name
+	product_category
+	quantity
+	updated_quantity
+	reorder_level
+	unit
+	buying_price
+	selling_price
+	shelf_location
+	supplier
+	manufacture_date
+	expire_date
+	batch_number
+	barcode = for future use
+	created_by
+	created _at
+	updated_by
+	updated_at
+	
+4. PATIENT RECORDS (View,add, edit, delete)
+(a) transaction_history (view)
+	transaction_id, 
+	transaction_date, 
+	product_purchased = medicine_id, 
+	payment_status
+	
+(b)Patient_details (view)
+	id
+	full_name
+	phone
+	email 
+	address
+	age 
+	gender
+	created_by
+	created_at
+	updated_by
+	updated_at
+	
+	
+	CASHIER MODULE
+1. PAYMENT
+ (a)Transaction Details
+ 	transaction_id
+ 	customer_id = patient_id, phone
+ 	total_amount
+ 	
+ 	
+ (b)Payment Details (view, add)
+ 	payment_status
+ 	payment_method
+ 	payed_amount
+ 	cart_details
+ 	created_by
+ 	created_at
+ 	
+2.PRINT RECEIPT (view, print)
+	receipt_id = transaction_id
+	customer_id = patient_name
+	created_at
+	payment_method
+	transaction_items = medicine_id_medicine_name
+	total_amount
+	
+3.PAYMENT REPORT (view, export)
+	transaction_id
+	transaction_date
+	customer_id
+	payment_method
+	payment_status
+	created_by
+	created_at
+	
+
+	WHOLE SALES MODULE
+1.DASHBOARD (view)
+	total_sales
+	customers
+	item_sold
+	pending_payment
+	monthly_sales_trend
+	top_selling_product
+	top_customer
+2.POS
+ (a)MEDICINES: (view details)
+	product_id
+	product_name
+	product_category
+	updated_quantity
+	unit
+	selling_price
+	expire_date
+	batch_number = optional
+	barcode = for future use
+	
+ (b)CUSTOMER: (view,add,edit)
+	id
+	name
+	phone
+	email
+	address
+	created_by
+	created_at
+	
+ (c) CART (view)
+	product_id
+	sale_quantity
+	total_amount
+	payed_amount
+	payment_method
+	discount
+	performed_by
+	performed_at
+	
+3.CUSTOMERS (view,create,edit,delete)
+	id
+	name
+	phone
+	email
+	address
+	category
+	contact_person
+	outstanding_balance
+	created_by
+	created_at
+	updated_by
+	updated_at
+	
+4.ITEMS MANAGER (view,add,edit,delete)
+	id
+	product_name
+	product_category
+	updated_quantity
+	unit
+	selling_price
+	expire_date
+	manufacture_date
+	batch_number = optional
+	barcode = for future use
+	created_by
+
+AADING ITEM (for adding a new item)
+	product_name,
+	product_category
+	product_unit
+	product_price
+	created_by
+	
+5.STOCK ADJUSTMENT. (add,view,edit)
+  	adjustment_id
+  	adjustment_category
+  	adjustment_reason
+  	adjustment_product
+  	adjusted_quantity
+  	created_by
+  	created_at
+  	
+ 6.REPORT (view)
+  	transaction_id
+  	created_at
+  	customer_id
+  	product_id
+  	total_price
+  	payment_status
+  	created_by
+  	
+  	
+  	MANAGEMENT MODULE
+  	
+  	SETTINGS MODULE
+  	
+  	
+  	
+	
+	
+	
+	
+
+	
+
+	

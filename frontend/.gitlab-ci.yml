@@ -1,0 +1,119 @@
+stages:
+  - build
+  - deploy
+
+variables:
+  ARTIFACTS_DIR: "artifacts"
+  DEPLOY_SERVER: ""
+  DEPLOY_USER: ""
+  DEPLOY_PATH: "/var/www/"
+
+cache:
+  paths:
+    - node_modules/
+
+before_script:
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    - echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config
+
+build:
+  stage: build
+  image: node:20
+  before_script:
+    - apt-get update -y
+    - apt-get install -y -qq openssh-client
+    # Install jq from Debian backports
+    - apt-get install -y -qq wget
+    - wget -O /usr/bin/jq https://github.com/stedolan/jq/releases/download/jq-1.6/jq-linux64
+    - chmod +x /usr/bin/jq
+  script:
+    - echo "Cleaning node_modules..."
+    - rm -rf node_modules/
+    - rm -f package-lock.json
+    
+    - echo "Installing dependencies..."
+    - npm install --legacy-peer-deps --force
+    
+    - echo "Verifying Vite installation..."
+    - ls -la node_modules/vite/dist/node/chunks/
+    - npm run build
+    - mkdir -p $ARTIFACTS_DIR
+    - cp -r dist/* $ARTIFACTS_DIR/
+  artifacts:
+    paths:
+      - $ARTIFACTS_DIR/
+    expire_in: 1 hour
+  only:
+    - production
+
+deploy:
+  stage: deploy
+  image: alpine:latest
+  before_script:
+    - apk add --no-cache openssh-client jq
+    # Read values from deploy-config.json
+    - export DEPLOY_SERVER=$(jq -r '.DEPLOY_SERVER' deploy-config.json)
+    - export DEPLOY_USER=$(jq -r '.DEPLOY_USER' deploy-config.json)
+    - export DEPLOY_PATH=$(jq -r '.DEPLOY_PATH' deploy-config.json)
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    - echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config
+    # Set up SSH key
+    - echo "Setting up SSH keys..."
+    - echo "-----BEGIN OPENSSH PRIVATE KEY-----" > ~/.ssh/id_rsa
+    - echo "b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAACFwAAAAdzc2gtcn" >> ~/.ssh/id_rsa
+    - echo "NhAAAAAwEAAQAAAgEAorxSJ/qvEf1EB9c1Uqvzh16gtO95TxFJxlHrU79WD1/dYRezEaHy" >> ~/.ssh/id_rsa
+    - echo "wlCvIyU/3mhJqxx+utCgnBEvs0Ibka7hBAYu+v7CVX77PIBQZaxKiZ0NkU1zZklml027Bn" >> ~/.ssh/id_rsa
+    - echo "IuW9mYnA46v37AJAASGEO7eolEk7CBp8HBK+Kq+m+dXtTIWRVB40+Tsnje42kaUPg8+roD" >> ~/.ssh/id_rsa
+    - echo "tjqPHF+j6D9vkKzaauliQTIs6y3c/N36W26d8ygMtjb7UNoVIpan/WIisVwt9f9gcXd03Y" >> ~/.ssh/id_rsa
+    - echo "6etGeregPKauuYdElORq/z6MIQLVHvtFQIwq5WRG7H9S0K0+uhrIbLRKVPJFuchHL8nErn" >> ~/.ssh/id_rsa
+    - echo "cVNTM88+oJrp6dyd1oBZUyavLhABZioyY7ssniTK7Sj9a/qq8k+64sP2nosnmWRZ5QLojQ" >> ~/.ssh/id_rsa
+    - echo "eBYw4XsSCrm/fbChkKgCz7p/q+6Tbn3tOhtLLc1NXWFpF+ihFUpL+qmEDnV64hwlCCMN+k" >> ~/.ssh/id_rsa
+    - echo "h8Fduw0SdYzGGBwwjjuKlg+iexme27ZTmEZMOqVfOwwonUTYIGFdT2rr0S/aklg/fsHmyj" >> ~/.ssh/id_rsa
+    - echo "WiORnILOuOS+E/OUqIjtXeFi4IGwiUPwb+6GzX2aHuzyChfx57QzQiV0hwbjMwlHyKuesE" >> ~/.ssh/id_rsa
+    - echo "2eyMZ7ti8L5utYqcdusUWBzs9z8S18vuDcIBRT6dp/+wS1vlS9DPON6dbkkuP8atp3/YHW" >> ~/.ssh/id_rsa
+    - echo "0AAAdQikjheIpI4XgAAAAHc3NoLXJzYQAAAgEAorxSJ/qvEf1EB9c1Uqvzh16gtO95TxFJ" >> ~/.ssh/id_rsa
+    - echo "xlHrU79WD1/dYRezEaHywlCvIyU/3mhJqxx+utCgnBEvs0Ibka7hBAYu+v7CVX77PIBQZa" >> ~/.ssh/id_rsa
+    - echo "xKiZ0NkU1zZklml027BnIuW9mYnA46v37AJAASGEO7eolEk7CBp8HBK+Kq+m+dXtTIWRVB" >> ~/.ssh/id_rsa
+    - echo "40+Tsnje42kaUPg8+roDtjqPHF+j6D9vkKzaauliQTIs6y3c/N36W26d8ygMtjb7UNoVIp" >> ~/.ssh/id_rsa
+    - echo "an/WIisVwt9f9gcXd03Y6etGeregPKauuYdElORq/z6MIQLVHvtFQIwq5WRG7H9S0K0+uh" >> ~/.ssh/id_rsa
+    - echo "rIbLRKVPJFuchHL8nErncVNTM88+oJrp6dyd1oBZUyavLhABZioyY7ssniTK7Sj9a/qq8k" >> ~/.ssh/id_rsa
+    - echo "+64sP2nosnmWRZ5QLojQeBYw4XsSCrm/fbChkKgCz7p/q+6Tbn3tOhtLLc1NXWFpF+ihFU" >> ~/.ssh/id_rsa
+    - echo "pL+qmEDnV64hwlCCMN+kh8Fduw0SdYzGGBwwjjuKlg+iexme27ZTmEZMOqVfOwwonUTYIG" >> ~/.ssh/id_rsa
+    - echo "FdT2rr0S/aklg/fsHmyjWiORnILOuOS+E/OUqIjtXeFi4IGwiUPwb+6GzX2aHuzyChfx57" >> ~/.ssh/id_rsa
+    - echo "QzQiV0hwbjMwlHyKuesE2eyMZ7ti8L5utYqcdusUWBzs9z8S18vuDcIBRT6dp/+wS1vlS9" >> ~/.ssh/id_rsa
+    - echo "DPON6dbkkuP8atp3/YHW0AAAADAQABAAACABKn1h9BLLq6NwdTE4jTr4pQPcogPd7jk3qJ" >> ~/.ssh/id_rsa
+    - echo "v5mNMLd4fO95gQy/bQ37o+g6h/TeLbvQ+3I9Inxht/8rz+9GhgMpFk+tzudwNCr+ZrkRJE" >> ~/.ssh/id_rsa
+    - echo "ZcW8bRgy4xsfIcdhlKE6hx7H3PX8q+JBa8b1aaxS5J+DOaI3Lw0k1Ood0t2HObnxAfULtX" >> ~/.ssh/id_rsa
+    - echo "Tw5BrwOQ8/ReUNdJZc2JLwjIqgig5RBH0I47DQl+UAnx6wiOBfpfVvoeGD73VJ4zMgMSFF" >> ~/.ssh/id_rsa
+    - echo "YG3wVIFPjDevHnCN2xUN5LmCvXrWfOdF64XKHb3/FJ9gLMBte8Xni69abIsGGZ9UjQFWuq" >> ~/.ssh/id_rsa
+    - echo "1DidXtJDMlE4wV7Fc3zZWYtx8bLW4vIVoXji6IpA6lWtaV1wMPbt3LhoevN1nrflTeqNE0" >> ~/.ssh/id_rsa
+    - echo "+N3NMA6+mBYWJuKWxvuakQUSTGHW+P4ltW46O/5mnxMaMBwmzm2kuLG8dxu2qlnqs7N28P" >> ~/.ssh/id_rsa
+    - echo "bbYRFm1iLbsycQ1o4hTdEZVmaUA388TxNyOm3HiyCmdOCO6U26cxLqYibvLJX/ngjcni5B" >> ~/.ssh/id_rsa
+    - echo "L5NknHELgUdLHbZ5AtG7Ipt+bHB+Wlo3iG7AxoOH3EnfNt5auFUEdU5Uk9rW80rQzE7epI" >> ~/.ssh/id_rsa
+    - echo "zsZ9duyFEX8k3/MFEsQiM7OpOJpPlOuJ2i9Cp3sRV1jlGOtAXbsJ/p5LRFdpmjDwi5PDOf" >> ~/.ssh/id_rsa
+    - echo "54aEh8ig9vflwd1RJBAAABAHMweim/qQtR+MHIK46378v8ci2qZCi8Ri2O9HTEC+BwkWsC" >> ~/.ssh/id_rsa
+    - echo "cVNhdbBJP3i/52eZMYn39wljMW6oOHi+6/63ImdIa0ZcWZ2vLgo3H7WYTWoc9DYcsgQP0J" >> ~/.ssh/id_rsa
+    - echo "bRLl1k8x05JCmGOlUFubXGTRYHKhWaIV2RDzuXFEPqYLOqbHflty/qnrKULjfm5NRMDfpf" >> ~/.ssh/id_rsa
+    - echo "c82bE2T41RtCYtsNRUZ2f0o9UmuEnkZJ7UFHRrHqS1LSFMAIyNAQnbpVuNE6GLy693cGEd" >> ~/.ssh/id_rsa
+    - echo "mqDqaXbGrRWF4tHHTYuTQ8Pd5OPIFLx+r519S+B6+4VIoLZhgnZkCsXdA5hVBlwD9Tgrcp" >> ~/.ssh/id_rsa
+    - echo "wzUCLF/OpgKb9L8AAAEBAM2tpz5riUoUKi8Acgl3ocdim7FNkIOhuEd+BD63JPCn6B43j/" >> ~/.ssh/id_rsa
+    - echo "E9E3knu7TOS4uvSrQx45xb9YC2w3C+fvPqvk1UcfCBUr7QRV1JhmHqLsMY4zIkA/a9Uy7a" >> ~/.ssh/id_rsa
+    - echo "A1cJl7BkOxeB3z1HXXREfdOSEfH33glaKBcph/E78ieZeMVf2kWL4xgtx6qfK0j184JMDe" >> ~/.ssh/id_rsa
+    - echo "KfycBoz61r0FE45TJhypAqfQrYmBteUG8kp/qfIPqjxe9WC6GsGWr6GvuENyNdobsGqgkG" >> ~/.ssh/id_rsa
+    - echo "diBtJhVKLJhZn5+n9A5GWMzjwt/WzVRt7OUXxkiV0zP53rVuIm+BpwzXijLyjVoUO5pKvk" >> ~/.ssh/id_rsa
+    - echo "W95+9ONUhx/T0AAAEBAMqNBGmrSB84ru6ZSBRWN8bOT+YJgCV1iPTp+NJYdmoERYlq7qXy" >> ~/.ssh/id_rsa
+    - echo "e2E7o/Qvf2z2BD+EYaD+mTvSN7C/fqp+ZhiPSxnrPnNeFHqAPXdm3dr1sFkv7+j25Vzcwe" >> ~/.ssh/id_rsa
+    - echo "++RAn6L+ooqfnd7DKpaykAVkYo2Sc/RFk0uKve9KxC7fcZLF/J5cJXeUb00/O1BNbUETet" >> ~/.ssh/id_rsa
+    - echo "gbZx6mZhb0oPMSsJAPmbmThttiBkKKcYFtSoumis/eFi2hiIU3NqKWQKd5lyvNuxhRl6i" >> ~/.ssh/id_rsa
+    - echo "vXbPWlNgYce8rNbB1Gc+L8NOpLxmMAlrysmctSlWZGL87gv1DpJEkaKJ5RBFtXzzgH1Hqc" >> ~/.ssh/id_rsa
+    - echo "rLORWBvlA/EAAAAVZ2l0bGFiLWRlcGxveW1lbnQta2V5AQIDBAUG" >> ~/.ssh/id_rsa
+    - echo "-----END OPENSSH PRIVATE KEY-----" >> ~/.ssh/id_rsa
+    - chmod 600 ~/.ssh/id_rsa
+  script:
+    - echo "Deploying to ${DEPLOY_SERVER}..."
+    - scp -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no -r $ARTIFACTS_DIR/* $DEPLOY_USER@$DEPLOY_SERVER:$DEPLOY_PATH
+    - echo "Deployment completed successfully!"
+  only:
+    - production
