@@ -13,7 +13,7 @@ interface Medicine {
   product_category: string;
   current_quantity: number;
   product_price: number;
-  expiry_date: string;
+  expire_date: string;
   batch_no: string;
 }
 
@@ -25,8 +25,8 @@ interface Meta {
 }
 
 // Custom debounce function
-function debounce<T extends (...args: any[]) => void>(func: T, wait: number): (...args: Parameters<T>) => void {
-  let timeout: NodeJS.Timeout | null = null;
+function debounce<T extends (...args: unknown[]) => void>(func: T, wait: number): (...args: Parameters<T>) => void {
+  let timeout: ReturnType<typeof setTimeout> | null = null;
   return (...args: Parameters<T>) => {
     if (timeout) clearTimeout(timeout);
     timeout = setTimeout(() => func(...args), wait);
@@ -55,6 +55,11 @@ const StockStatusReport: React.FC = () => {
     const month = String(d.getMonth() + 1).padStart(2, '0');
     const year = d.getFullYear();
     return `${day}/${month}/${year}`;
+  };
+
+  // Helper function to format amounts
+  const formatAmount = (amount: number): string => {
+    return `Tsh ${amount.toFixed(2)}`;
   };
 
   // Auto-dismiss error after 1 second
@@ -119,30 +124,31 @@ const StockStatusReport: React.FC = () => {
       const rawData = JSON.parse(text);
       console.log('Parsed response data:', rawData);
 
-      let data = Array.isArray(rawData) ? rawData : Array.isArray(rawData.data) ? rawData.data : [];
+      const data = Array.isArray(rawData) ? rawData : Array.isArray(rawData.data) ? rawData.data : [];
       const metaData = rawData.meta || { current_page: 1, last_page: 1, per_page: perPage, total: data.length };
 
       if (!Array.isArray(data)) {
         throw new Error('Expected an array of medicines.');
       }
 
-      const parsedData: Medicine[] = data.map((item: any) => ({
-        product_name: item.product_name || 'Unknown Product',
-        product_category: item.product_category || 'N/A',
-        current_quantity: parseInt(item.current_quantity, 10) || 0,
-        product_price: parseFloat(item.product_price) || 0,
-        expiry_date: item.expiry_date || item.expire_date || 'N/A',
-        batch_no: item.batch_no || 'N/A',
+      const parsedData: Medicine[] = data.map((item: Record<string, unknown>) => ({
+        product_name: (item.product_name as string) || 'Unknown Product',
+        product_category: (item.product_category as string) || 'N/A',
+        current_quantity: parseInt(String(item.current_quantity), 10) || 0,
+        product_price: parseFloat(String(item.product_price)) || 0,
+        expire_date: (item.expire_date as string) || 'N/A',
+        batch_no: (item.batch_no as string) || 'N/A',
       }));
 
       console.log('Parsed medicines:', parsedData);
       setMedicines(parsedData);
       setMeta(metaData);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Fetch medicines error:', err);
-      setError(err.message);
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
+      setError(errorMessage);
       setMedicines([]);
-      setMeta({ current_page: 1, last_page: 1, per_page, total: 0 });
+      setMeta({ current_page: 1, last_page: 1, per_page: perPage, total: 0 });
     } finally {
       setLoading(false);
     }
@@ -170,13 +176,13 @@ const StockStatusReport: React.FC = () => {
   const filteredMedicines = medicines;
 
   const expiredItems = filteredMedicines.filter(
-    (m) => m.expiry_date !== 'N/A' && new Date(m.expiry_date) < today
+    (m) => m.expire_date !== 'N/A' && new Date(m.expire_date) < today
   );
   const nearExpiringItems = filteredMedicines.filter(
     (m) =>
-      m.expiry_date !== 'N/A' &&
-      new Date(m.expiry_date) >= today &&
-      new Date(m.expiry_date) <= nearExpiryThreshold
+      m.expire_date !== 'N/A' &&
+      new Date(m.expire_date) >= today &&
+      new Date(m.expire_date) <= nearExpiryThreshold
   );
   const lowStockItems = filteredMedicines.filter(
     (m) => m.current_quantity > 0 && m.current_quantity <= LOW_STOCK_THRESHOLD
@@ -218,7 +224,7 @@ const StockStatusReport: React.FC = () => {
       item.product_category,
       item.current_quantity,
       item.product_price.toFixed(2),
-      formatDate(item.expiry_date),
+      formatDate(item.expire_date),
       item.batch_no,
     ]);
 
@@ -241,7 +247,7 @@ const StockStatusReport: React.FC = () => {
         5: { cellWidth: 25 },
         6: { cellWidth: 25 },
       },
-      didDrawPage: (data: any) => {
+      didDrawPage: (data: { pageNumber: number }) => {
         const pageCount = doc.internal.getNumberOfPages();
         doc.setFontSize(8);
         doc.text(`Page ${data.pageNumber} of ${pageCount}`, pageWidth - margin, doc.internal.pageSize.getHeight() - 10, {
@@ -250,7 +256,7 @@ const StockStatusReport: React.FC = () => {
       },
     });
 
-    const summaryY = (doc as any).lastAutoTable.finalY + 10;
+    const summaryY = (doc as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 10;
     doc.setFontSize(12);
     doc.text('Report Summary', margin, summaryY);
     doc.setFontSize(10);
@@ -277,16 +283,16 @@ const StockStatusReport: React.FC = () => {
       'Category': item.product_category,
       'Quantity': item.current_quantity,
       'Price (Tsh)': item.product_price.toFixed(2),
-      'Expiry Date': formatDate(item.expiry_date),
+      'Expiry Date': formatDate(item.expire_date),
       'Batch No': item.batch_no,
     }));
 
     // Add total value row
     worksheetData.push({
-      'S/N': '',
+      'S/N': 0,
       'Name': '',
       'Category': '',
-      'Quantity': '',
+      'Quantity': 0,
       'Price (Tsh)': `Total Value: ${totalValue}`,
       'Expiry Date': '',
       'Batch No': '',
@@ -298,26 +304,29 @@ const StockStatusReport: React.FC = () => {
     XLSX.writeFile(workbook, `${title.toLowerCase().replace(' ', '_')}_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
-  const renderSection = (items: Medicine[], title: string) => (
-    <section style={{ marginBottom: 24, background: theme.palette.background.paper, border: `1px solid ${theme.palette.divider}`, borderRadius: 16, boxShadow: theme.shadows[1], padding: 24 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-        <h3 style={{ fontSize: 20, fontWeight: 700, color: theme.palette.text.primary }}>{title}</h3>
-        <div style={{ display: 'flex', gap: 8 }}>
+  const renderSection = (items: Medicine[], title: string) => {
+    const totalAmount = items.reduce((sum, item) => sum + (item.current_quantity * item.product_price), 0);
+    
+    return (
+      <section style={{ marginBottom: 24, background: theme.palette.background.paper, border: `1px solid ${theme.palette.divider}`, borderRadius: 16, boxShadow: theme.shadows[1], padding: 24 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+          <h3 style={{ fontSize: 20, fontWeight: 700, color: theme.palette.text.primary }}>{title}</h3>
+          <div style={{ display: 'flex', gap: 8 }}>
             <button
               onClick={() => exportToPDF(items, title)}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              padding: '8px 16px',
-              background: theme.palette.success.main,
-              color: theme.palette.common.white,
-              borderRadius: 8,
-              cursor: loading || items.length === 0 ? 'not-allowed' : 'pointer',
-              opacity: loading || items.length === 0 ? 0.7 : 1,
-              transition: 'all 0.2s ease-in-out',
-              boxShadow: theme.shadows[1],
-              border: 'none',
-            }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                padding: '8px 16px',
+                background: theme.palette.success.main,
+                color: theme.palette.common.white,
+                borderRadius: 8,
+                cursor: loading || items.length === 0 ? 'not-allowed' : 'pointer',
+                opacity: loading || items.length === 0 ? 0.7 : 1,
+                transition: 'all 0.2s ease-in-out',
+                boxShadow: theme.shadows[1],
+                border: 'none',
+              }}
               disabled={loading || items.length === 0}
             >
               <Download className="h-4 w-4 mr-2" />
@@ -325,19 +334,19 @@ const StockStatusReport: React.FC = () => {
             </button>
             <button
               onClick={() => exportToExcel(items, title)}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              padding: '8px 16px',
-              background: theme.palette.info.main,
-              color: theme.palette.common.white,
-              borderRadius: 8,
-              cursor: loading || items.length === 0 ? 'not-allowed' : 'pointer',
-              opacity: loading || items.length === 0 ? 0.7 : 1,
-              transition: 'all 0.2s ease-in-out',
-              boxShadow: theme.shadows[1],
-              border: 'none',
-            }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                padding: '8px 16px',
+                background: theme.palette.info.main,
+                color: theme.palette.common.white,
+                borderRadius: 8,
+                cursor: loading || items.length === 0 ? 'not-allowed' : 'pointer',
+                opacity: loading || items.length === 0 ? 0.7 : 1,
+                transition: 'all 0.2s ease-in-out',
+                boxShadow: theme.shadows[1],
+                border: 'none',
+              }}
               disabled={loading || items.length === 0}
             >
               <Download className="h-4 w-4 mr-2" />
@@ -345,36 +354,36 @@ const StockStatusReport: React.FC = () => {
             </button>
           </div>
         </div>
-      <div style={{ border: `1px solid ${theme.palette.divider}`, borderRadius: 12, overflow: 'hidden' }}>
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', borderSpacing: 0 }}>
-            <thead style={{ background: theme.palette.primary.main }}>
-              <tr>
-                <th style={{ padding: '16px 20px', textAlign: 'left', fontSize: 14, fontWeight: 700, color: theme.palette.primary.contrastText, textTransform: 'uppercase', letterSpacing: 1 }}>S/N</th>
-                <th style={{ padding: '16px 20px', textAlign: 'left', fontSize: 14, fontWeight: 700, color: theme.palette.primary.contrastText, textTransform: 'uppercase', letterSpacing: 1 }}>Name</th>
-                <th style={{ padding: '16px 20px', textAlign: 'left', fontSize: 14, fontWeight: 700, color: theme.palette.primary.contrastText, textTransform: 'uppercase', letterSpacing: 1 }}>Category</th>
-                <th style={{ padding: '16px 20px', textAlign: 'left', fontSize: 14, fontWeight: 700, color: theme.palette.primary.contrastText, textTransform: 'uppercase', letterSpacing: 1 }}>Quantity</th>
-                <th style={{ padding: '16px 20px', textAlign: 'left', fontSize: 14, fontWeight: 700, color: theme.palette.primary.contrastText, textTransform: 'uppercase', letterSpacing: 1 }}>Price (Tsh)</th>
-                <th style={{ padding: '16px 20px', textAlign: 'left', fontSize: 14, fontWeight: 700, color: theme.palette.primary.contrastText, textTransform: 'uppercase', letterSpacing: 1 }}>Expiry Date</th>
-                <th style={{ padding: '16px 20px', textAlign: 'left', fontSize: 14, fontWeight: 700, color: theme.palette.primary.contrastText, textTransform: 'uppercase', letterSpacing: 1 }}>Batch No</th>
+        <div style={{ border: `1px solid ${theme.palette.divider}`, borderRadius: 12, overflow: 'hidden' }}>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', borderSpacing: 0 }}>
+              <thead style={{ background: theme.palette.primary.main }}>
+                <tr>
+                  <th style={{ padding: '16px 20px', textAlign: 'left', fontSize: 14, fontWeight: 700, color: theme.palette.primary.contrastText, textTransform: 'uppercase', letterSpacing: 1 }}>S/N</th>
+                  <th style={{ padding: '16px 20px', textAlign: 'left', fontSize: 14, fontWeight: 700, color: theme.palette.primary.contrastText, textTransform: 'uppercase', letterSpacing: 1 }}>Name</th>
+                  <th style={{ padding: '16px 20px', textAlign: 'left', fontSize: 14, fontWeight: 700, color: theme.palette.primary.contrastText, textTransform: 'uppercase', letterSpacing: 1 }}>Category</th>
+                  <th style={{ padding: '16px 20px', textAlign: 'left', fontSize: 14, fontWeight: 700, color: theme.palette.primary.contrastText, textTransform: 'uppercase', letterSpacing: 1 }}>Quantity</th>
+                  <th style={{ padding: '16px 20px', textAlign: 'left', fontSize: 14, fontWeight: 700, color: theme.palette.primary.contrastText, textTransform: 'uppercase', letterSpacing: 1 }}>Price (Tsh)</th>
+                  <th style={{ padding: '16px 20px', textAlign: 'left', fontSize: 14, fontWeight: 700, color: theme.palette.primary.contrastText, textTransform: 'uppercase', letterSpacing: 1 }}>Expiry Date</th>
+                  <th style={{ padding: '16px 20px', textAlign: 'left', fontSize: 14, fontWeight: 700, color: theme.palette.primary.contrastText, textTransform: 'uppercase', letterSpacing: 1 }}>Batch No</th>
                 </tr>
               </thead>
-            <tbody style={{ background: theme.palette.background.paper }}>
+              <tbody style={{ background: theme.palette.background.paper }}>
                 {items.length > 0 ? (
                   items.map((medicine, index) => (
-                  <tr key={`${medicine.product_name}-${index}`} style={{ transition: 'background-color 0.15s ease-in-out', background: index % 2 === 0 ? theme.palette.background.paper : theme.palette.action.hover }}>
-                    <td style={{ padding: '16px 20px', color: theme.palette.text.primary }}>{index + 1}</td>
-                    <td style={{ padding: '16px 20px', color: theme.palette.text.primary, fontWeight: 500 }}>{medicine.product_name}</td>
-                    <td style={{ padding: '16px 20px', color: theme.palette.text.primary }}>{medicine.product_category}</td>
-                    <td style={{ padding: '16px 20px', color: theme.palette.text.primary }}>{medicine.current_quantity}</td>
-                    <td style={{ padding: '16px 20px', color: theme.palette.text.primary }}>{medicine.product_price.toFixed(2)}</td>
-                    <td style={{ padding: '16px 20px', color: theme.palette.text.primary }}>{medicine.expire_date}</td>
-                    <td style={{ padding: '16px 20px', color: theme.palette.text.primary }}>{medicine.batch_no}</td>
+                    <tr key={`${medicine.product_name}-${index}`} style={{ transition: 'background-color 0.15s ease-in-out', background: index % 2 === 0 ? theme.palette.background.paper : theme.palette.action.hover }}>
+                      <td style={{ padding: '16px 20px', color: theme.palette.text.primary }}>{index + 1}</td>
+                      <td style={{ padding: '16px 20px', color: theme.palette.text.primary, fontWeight: 500 }}>{medicine.product_name}</td>
+                      <td style={{ padding: '16px 20px', color: theme.palette.text.primary }}>{medicine.product_category}</td>
+                      <td style={{ padding: '16px 20px', color: theme.palette.text.primary }}>{medicine.current_quantity}</td>
+                      <td style={{ padding: '16px 20px', color: theme.palette.text.primary }}>{formatAmount(medicine.product_price)}</td>
+                      <td style={{ padding: '16px 20px', color: theme.palette.text.primary }}>{formatDate(medicine.expire_date)}</td>
+                      <td style={{ padding: '16px 20px', color: theme.palette.text.primary }}>{medicine.batch_no}</td>
                     </tr>
                   ))
                 ) : (
                   <tr>
-                  <td colSpan={7} style={{ padding: '16px 20px', textAlign: 'center', fontSize: 15, color: theme.palette.text.secondary }}>
+                    <td colSpan={7} style={{ padding: '16px 20px', textAlign: 'center', fontSize: 15, color: theme.palette.text.secondary }}>
                       No items found
                     </td>
                   </tr>
@@ -383,14 +392,41 @@ const StockStatusReport: React.FC = () => {
             </table>
           </div>
         </div>
+        
+        {/* Total Amount Section */}
+        {items.length > 0 && (
+          <div style={{ 
+            marginTop: 16, 
+            padding: 16, 
+            background: theme.palette.primary.light, 
+            borderRadius: 8, 
+            border: `1px solid ${theme.palette.primary.main}`,
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center'
+          }}>
+            <div>
+              <span style={{ fontSize: 16, fontWeight: 600, color: theme.palette.primary.contrastText }}>
+                Total Items: {items.length}
+              </span>
+            </div>
+            <div>
+              <span style={{ fontSize: 18, fontWeight: 700, color: theme.palette.primary.contrastText }}>
+                Total Amount: {formatAmount(totalAmount)}
+              </span>
+            </div>
+          </div>
+        )}
       </section>
     );
+  };
 
-  const transitionStyles = {
+  const transitionStyles: Record<string, React.CSSProperties> = {
     entering: { opacity: 0, transform: 'translateY(-10px)' },
     entered: { opacity: 1, transform: 'translateY(0)' },
     exiting: { opacity: 0, transform: 'translateY(-10px)' },
     exited: { opacity: 0, transform: 'translateY(-10px)' },
+    unmounted: { opacity: 0, transform: 'translateY(-10px)' },
   };
 
   return (

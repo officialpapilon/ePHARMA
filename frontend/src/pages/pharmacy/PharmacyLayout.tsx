@@ -44,12 +44,12 @@ const PharmacyLayout: React.FC = () => {
 
   return (
     <main style={{ minHeight: '100vh', width: '100%', maxWidth: '100vw', background: '#f5f7fa', boxSizing: 'border-box', padding: '16px' }}>
-      <Layout
-        navItems={navItems}
-        title="Pharmacy"
-        breadcrumbs={getBreadcrumbs()}
-        headerTitle="Pharmacy Management"
-      />
+    <Layout
+      navItems={navItems}
+      title="Pharmacy"
+      breadcrumbs={getBreadcrumbs()}
+      headerTitle="Pharmacy Management"
+    />
     </main>
   );
 };
