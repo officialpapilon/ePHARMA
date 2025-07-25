@@ -14,6 +14,15 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware) {
         $middleware->alias([
             'single.session' => \App\Http\Middleware\CheckSingleSession::class,
+            'cors' => \App\Http\Middleware\Cors::class,
+        ]);
+        
+        $middleware->web(append: [
+            \App\Http\Middleware\Cors::class,
+        ]);
+        
+        $middleware->api(append: [
+            \App\Http\Middleware\Cors::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {

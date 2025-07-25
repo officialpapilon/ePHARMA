@@ -235,8 +235,8 @@ const DispensingDashboard: React.FC = () => {
   ];
 
   return (
-    <div style={{ minHeight: '100vh', background: theme.palette.background.default, display: 'flex', flexDirection: 'column' }}>
-      <div style={{ width: '100%', flexGrow: 1, display: 'flex', flexDirection: 'column', padding: 24 }}>
+    <div style={{ minHeight: '100vh', background: theme.palette.background.default, display: 'flex', flexDirection: 'column', width: '100%', maxWidth: '100vw', boxSizing: 'border-box', padding: '16px' }}>
+      <div style={{ width: '100%', flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: 24 }}>
           <NavigateNext style={{ color: theme.palette.text.secondary, width: 24, height: 24 }} />
           <h4 style={{ fontSize: 15, fontWeight: 600, color: theme.palette.text.secondary, marginRight: 8 }}>Pharmacy</h4>

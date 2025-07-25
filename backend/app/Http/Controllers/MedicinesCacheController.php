@@ -13,13 +13,48 @@ class MedicinesCacheController extends Controller
 {
     public function index(Request $request)
     {
-        $query = MedicinesCache::query();
+        $perPage = $request->input('per_page', 15);
+        $search = $request->input('search');
         
-        if ($request->has('product_id')) {
-            $query->where('product_id', $request->input('product_id'));
+        $query = MedicinesCache::query()
+            ->select([
+                'id',
+                'product_id',
+                'batch_no',
+                'product_name',
+                'product_price',
+                'product_category',
+                'expire_date',
+                'current_quantity',
+                'created_at',
+                'updated_at'
+            ]);
+        
+        if ($search) {
+            $query->where(function($q) use ($search) {
+                $q->where('product_name', 'like', "%{$search}%")
+                  ->orWhere('product_category', 'like', "%{$search}%")
+                  ->orWhere('batch_no', 'like', "%{$search}%");
+            });
         }
         
-        return $query->paginate($request->input('limit', 10));
+        $query->orderBy('product_name', 'asc');
+        
+        $medicines = $query->paginate($perPage);
+        
+        return response()->json([
+            'success' => true,
+            'data' => $medicines->items(),
+            'meta' => [
+                'current_page' => $medicines->currentPage(),
+                'last_page' => $medicines->lastPage(),
+                'per_page' => $medicines->perPage(),
+                'total' => $medicines->total(),
+                'from' => $medicines->firstItem(),
+                'to' => $medicines->lastItem(),
+            ],
+            'message' => 'Medicines retrieved successfully'
+        ]);
     }
 
     public function show($product_id)

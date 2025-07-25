@@ -49,7 +49,7 @@ const Dashboard = () => {
   const maxCategoryValue = Math.max(...salesByCategory.map(item => item.value));
 
   return (
-    <div style={{ padding: 24, background: theme.palette.background.default, minHeight: '100vh' }}>
+    <div style={{ padding: '16px', background: theme.palette.background.default, minHeight: '100vh', width: '100%', maxWidth: '100vw', boxSizing: 'border-box' }}>
       <h2 style={{ fontSize: 24, fontWeight: 700, color: theme.palette.text.primary, marginBottom: 24 }}>Management Dashboard</h2>
       
       {/* Stats Cards */}
@@ -142,9 +142,8 @@ const Dashboard = () => {
             {monthlySales.map((item, index) => (
               <div key={index} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                 <div 
-                  style={{ width: '100%', background: theme.palette.primary.main, borderRadius: '8px 8px 0 0' }}
+                  style={{ width: '100%', background: theme.palette.primary.main, borderRadius: '8px 8px 0 0', height: `${(item.value / maxSalesValue) * 100}%` }}
                   className="rounded-t"
-                  style={{ height: `${(item.value / maxSalesValue) * 100}%` }}
                 ></div>
                 <div style={{ fontSize: 12, marginTop: 8 }}>{item.month}</div>
               </div>
@@ -163,9 +162,8 @@ const Dashboard = () => {
               {customerGrowth.map((item, index) => (
                 <div key={index} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                   <div 
-                    style={{ width: '100%', background: theme.palette.info.main, borderRadius: '8px 8px 0 0' }}
+                    style={{ width: '100%', background: theme.palette.info.main, borderRadius: '8px 8px 0 0', height: `${(item.value / maxCustomerValue) * 100}%` }}
                     className="rounded-t"
-                    style={{ height: `${(item.value / maxCustomerValue) * 100}%` }}
                   ></div>
                   <div style={{ fontSize: 12, marginTop: 8 }}>{item.month}</div>
                 </div>
@@ -182,9 +180,8 @@ const Dashboard = () => {
               {salesByCategory.map((item, index) => (
                 <div key={index} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                   <div 
-                    style={{ width: '100%', background: theme.palette.success.main, borderRadius: '8px 8px 0 0' }}
+                    style={{ width: '100%', background: theme.palette.success.main, borderRadius: '8px 8px 0 0', height: `${(item.value / maxCategoryValue) * 100}%` }}
                     className="rounded-t"
-                    style={{ height: `${(item.value / maxCategoryValue) * 100}%` }}
                   ></div>
                   <div style={{ fontSize: 12, marginTop: 8, textAlign: 'center' }}>{item.category}</div>
                   <div style={{ fontSize: 12, fontWeight: 500 }}>{item.value}%</div>

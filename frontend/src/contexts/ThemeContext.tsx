@@ -1,9 +1,10 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
-import { ThemeProvider as MuiThemeProvider, createTheme, PaletteMode } from '@mui/material';
+import { ThemeProvider as MuiThemeProvider, createTheme, PaletteMode, CssBaseline } from '@mui/material';
 
 interface ThemeContextType {
   mode: PaletteMode;
   toggleTheme: () => void;
+  isDark: boolean;
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
@@ -25,6 +26,8 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const toggleTheme = () => setMode((prev) => (prev === 'light' ? 'dark' : 'light'));
 
+  const isDark = mode === 'dark';
+
   const theme = useMemo(() =>
     createTheme({
       palette: {
@@ -32,109 +35,129 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         ...(mode === 'light'
           ? {
               primary: {
-                main: '#1976d2', // pharmacy blue
-                light: '#63a4ff',
-                dark: '#004ba0',
+                main: '#2563eb',
+                light: '#60a5fa',
+                dark: '#1d4ed8',
                 contrastText: '#fff',
               },
               secondary: {
-                main: '#43cea2', // teal accent
-                light: '#b2f7ef',
-                dark: '#11998e',
+                main: '#10b981',
+                light: '#6ee7b7',
+                dark: '#059669',
                 contrastText: '#fff',
               },
               background: {
-                default: '#f4f8fb', // soft blue/gray
+                default: '#f8fafc',
                 paper: '#fff',
               },
               text: {
-                primary: '#1a237e', // deep blue
-                secondary: '#546e7a', // blue-gray
+                primary: '#1e293b',
+                secondary: '#64748b',
               },
-              divider: '#e3eaf2',
-              success: { main: '#43a047', contrastText: '#fff' },
-              error: { main: '#e53935', contrastText: '#fff' },
-              warning: { main: '#fbc02d', contrastText: '#fff' },
-              info: { main: '#1976d2', contrastText: '#fff' },
+              divider: '#e2e8f0',
+              success: { main: '#10b981', contrastText: '#fff' },
+              error: { main: '#ef4444', contrastText: '#fff' },
+              warning: { main: '#f59e0b', contrastText: '#fff' },
+              info: { main: '#3b82f6', contrastText: '#fff' },
               action: {
-                hover: '#e3f2fd',
-                selected: '#bbdefb',
-                disabled: '#b0bec5',
-                disabledBackground: '#eceff1',
+                hover: '#f1f5f9',
+                selected: '#e2e8f0',
+                disabled: '#94a3b8',
+                disabledBackground: '#f1f5f9',
               },
             }
           : {
               primary: {
-                main: '#22304a', // deep blue-gray
-                light: '#3a4a6b',
-                dark: '#101c2c',
+                main: '#3b82f6',
+                light: '#60a5fa',
+                dark: '#2563eb',
                 contrastText: '#fff',
               },
               secondary: {
-                main: '#43cea2',
-                light: '#b2f7ef',
-                dark: '#11998e',
+                main: '#10b981',
+                light: '#6ee7b7',
+                dark: '#059669',
                 contrastText: '#fff',
               },
               background: {
-                default: '#181f2a', // soft deep blue
-                paper: '#232e42', // card bg
+                default: '#0f172a',
+                paper: '#1e293b',
               },
               text: {
-                primary: '#f4f8fb', // very light
-                secondary: '#b0bec5', // blue-gray
+                primary: '#f1f5f9',
+                secondary: '#94a3b8',
               },
-              divider: '#2c3a4e',
-              success: { main: '#43a047', contrastText: '#fff' },
-              error: { main: '#e57373', contrastText: '#fff' },
-              warning: { main: '#ffd54f', contrastText: '#fff' },
-              info: { main: '#63a4ff', contrastText: '#fff' },
+              divider: '#334155',
+              success: { main: '#10b981', contrastText: '#fff' },
+              error: { main: '#ef4444', contrastText: '#fff' },
+              warning: { main: '#f59e0b', contrastText: '#000' },
+              info: { main: '#3b82f6', contrastText: '#fff' },
               action: {
-                hover: '#22304a',
-                selected: '#2c3a4e',
-                disabled: '#3a4a6b',
-                disabledBackground: '#232e42',
+                hover: '#334155',
+                selected: '#475569',
+                disabled: '#64748b',
+                disabledBackground: '#334155',
               },
             }),
       },
       typography: {
-        fontFamily: 'Inter, Roboto, Arial, sans-serif',
-        h1: { fontWeight: 800, fontSize: '2.5rem', letterSpacing: 0.5 },
-        h2: { fontWeight: 700, fontSize: '2rem', letterSpacing: 0.3 },
-        h3: { fontWeight: 700, fontSize: '1.5rem', letterSpacing: 0.2 },
-        h4: { fontWeight: 600, fontSize: '1.2rem', letterSpacing: 0.1 },
-        body1: { fontSize: '1rem', fontWeight: 500 },
-        body2: { fontSize: '0.95rem', fontWeight: 400 },
-        button: { fontWeight: 700, textTransform: 'none', letterSpacing: 0.1 },
+        fontFamily: '"Inter", "Roboto", "Helvetica", "Arial", sans-serif',
+        h1: { fontWeight: 700, fontSize: '2.25rem', lineHeight: 1.2 },
+        h2: { fontWeight: 600, fontSize: '1.875rem', lineHeight: 1.3 },
+        h3: { fontWeight: 600, fontSize: '1.5rem', lineHeight: 1.4 },
+        h4: { fontWeight: 600, fontSize: '1.25rem', lineHeight: 1.4 },
+        h5: { fontWeight: 600, fontSize: '1.125rem', lineHeight: 1.4 },
+        h6: { fontWeight: 600, fontSize: '1rem', lineHeight: 1.4 },
+        body1: { fontSize: '1rem', lineHeight: 1.6 },
+        body2: { fontSize: '0.875rem', lineHeight: 1.5 },
+        button: { fontWeight: 600, textTransform: 'none' },
+        caption: { fontSize: '0.75rem', lineHeight: 1.4 },
       },
       shape: {
-        borderRadius: 16,
+        borderRadius: 12,
       },
       components: {
         MuiPaper: {
           styleOverrides: {
             root: {
-              borderRadius: 16,
-              boxShadow: '0 4px 32px rgba(0, 80, 180, 0.08)',
+              borderRadius: 12,
             },
           },
         },
         MuiButton: {
           styleOverrides: {
             root: {
-              borderRadius: 12,
-              fontWeight: 700,
-              fontSize: '1rem',
-              padding: '10px 24px',
-              boxShadow: '0 2px 8px rgba(25, 118, 210, 0.08)',
+              borderRadius: 8,
+              fontWeight: 600,
+              textTransform: 'none',
+              boxShadow: 'none',
+              '&:hover': {
+                boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
+              },
             },
           },
         },
         MuiCard: {
           styleOverrides: {
             root: {
-              borderRadius: 20,
-              boxShadow: '0 4px 32px rgba(0, 80, 180, 0.08)',
+              borderRadius: 12,
+              boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
+            },
+          },
+        },
+        MuiTextField: {
+          styleOverrides: {
+            root: {
+              '& .MuiOutlinedInput-root': {
+                borderRadius: 8,
+              },
+            },
+          },
+        },
+        MuiChip: {
+          styleOverrides: {
+            root: {
+              borderRadius: 6,
             },
           },
         },
@@ -143,8 +166,11 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   [mode]);
 
   return (
-    <ThemeContext.Provider value={{ mode, toggleTheme }}>
-      <MuiThemeProvider theme={theme}>{children}</MuiThemeProvider>
+    <ThemeContext.Provider value={{ mode, toggleTheme, isDark }}>
+      <MuiThemeProvider theme={theme}>
+        <CssBaseline />
+        {children}
+      </MuiThemeProvider>
     </ThemeContext.Provider>
   );
 };

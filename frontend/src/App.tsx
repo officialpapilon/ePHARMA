@@ -1,8 +1,22 @@
 import React, { Suspense } from "react";
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { SettingsProvider } from "./contexts/SettingsContext";
 import { ThemeProvider } from "./contexts/ThemeContext";
+import LoadingSpinner from './components/common/LoadingSpinner/LoadingSpinner';
+import ErrorBoundary from './components/common/ErrorBoundary/ErrorBoundary';
+
+// Create a client
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: 1,
+      refetchOnWindowFocus: false,
+      staleTime: 5 * 60 * 1000, // 5 minutes
+    },
+  },
+});
 
 // Lazy load all page components
 const LoginPage = React.lazy(() => import('./pages/login/LoginPage'));
@@ -65,85 +79,88 @@ const PrivateRoute: React.FC<{ element: JSX.Element }> = ({ element }) => {
 };
 
 const App: React.FC = () => (
-  <ThemeProvider>
-    <AuthProvider>
-      <SettingsProvider>
-        <Router>
-          <Suspense fallback={<div style={{display:'flex',justifyContent:'center',alignItems:'center',height:'100vh'}}><span>Loading...</span></div>}>
-            <Routes>
-              {/* Public Routes */}
-              <Route path="/login" element={<LoginPage />} />
-              <Route path="/" element={<Home />} />
+  <ErrorBoundary>
+    <QueryClientProvider client={queryClient}>
+      <ThemeProvider>
+        <AuthProvider>
+          <SettingsProvider>
+            <Router>
+              <Suspense fallback={<LoadingSpinner overlay message="Loading application..." />}>
+                <Routes>
+                  {/* Public Routes */}
+                  <Route path="/login" element={<LoginPage />} />
+                  <Route path="/" element={<Home />} />
 
-              {/* Protected Routes */}
-              <Route path="/cashier/*" element={<PrivateRoute element={<CashierLayout />} />}>
-                <Route index element={<CashierDashboard />} />
-                <Route path="payment" element={<Payment />} />
-                <Route path="paymentReport" element={<PaymentReport />} />
-                <Route path="PrintRecords" element={<PrintRecords />} />
-              </Route>
+                  {/* Protected Routes */}
+                  <Route path="/cashier/*" element={<PrivateRoute element={<CashierLayout />} />}>
+                    <Route index element={<CashierDashboard />} />
+                    <Route path="payment" element={<Payment />} />
+                    <Route path="payment-report" element={<PaymentReport />} />
+                    <Route path="print-records" element={<PrintRecords />} />
+                  </Route>
 
-              <Route path="/pharmacy/*" element={<PrivateRoute element={<PharmacyLayout />} />}>
-                <Route index element={<PharmacyDashboard />} />
-                <Route path="TransactionApprove" element={<TransactionApprove />} />
-                <Route path="Dispensing" element={<Dispensing />} />
-                <Route path="Dispensing/simple" element={<SimpleDispensing />} />
-                <Route path="dispensingReport" element={<DispensingReport />} />
-                <Route path="PatientRecords" element={<PatientRecords />} />
-                <Route path="StockManager" element={<StockManager />} />
-                <Route path="ExpiringReport" element={<ExpiringReport />} />
-              </Route>
+                  <Route path="/pharmacy/*" element={<PrivateRoute element={<PharmacyLayout />} />}>
+                    <Route index element={<PharmacyDashboard />} />
+                    <Route path="transaction-approve" element={<TransactionApprove />} />
+                    <Route path="dispensing" element={<Dispensing />} />
+                    <Route path="dispensing/simple" element={<SimpleDispensing />} />
+                    <Route path="dispensing-report" element={<DispensingReport />} />
+                    <Route path="patient-records" element={<PatientRecords />} />
+                    <Route path="stock-manager" element={<StockManager />} />
+                    <Route path="expiring-report" element={<ExpiringReport />} />
+                  </Route>
 
-              <Route path="/wholesale/*" element={<PrivateRoute element={<WholesaleLayout />} />}>
-                <Route index element={<WholesaleDashboard />} />
-                <Route path="Pos" element={<Pos />} />
-                <Route path="Customers" element={<Customers />} />
-                <Route path="ItemsManager" element={<ItemsManager />} />
-                <Route path="StockAdjustment" element={<StockAdjustment />} />
-                <Route path="Report" element={<Report />} />
-                <Route path="StockTaking" element={<WholesaleStockTaking />} />
-              </Route>
+                  <Route path="/wholesale/*" element={<PrivateRoute element={<WholesaleLayout />} />}>
+                    <Route index element={<WholesaleDashboard />} />
+                    <Route path="pos" element={<Pos />} />
+                    <Route path="customers" element={<Customers />} />
+                    <Route path="items-manager" element={<ItemsManager />} />
+                    <Route path="stock-adjustment" element={<StockAdjustment />} />
+                    <Route path="report" element={<Report />} />
+                    <Route path="stock-taking" element={<WholesaleStockTaking />} />
+                  </Route>
 
-              <Route path="/management/*" element={<PrivateRoute element={<ManagementLayout />} />}>
-                <Route index element={<ManagementDashboard />} />
-                <Route path="Inventory" element={<Inventory />} />
-                <Route path="InventoryReports" element={<InventoryReports />} />
-                <Route path="StockStatusReport" element={<StockStatudReport />} />
-                <Route path="StockAdjusting" element={<StockAdjusting />} />
-                <Route path="StockReceiving" element={<StockReceiving />} />
-                <Route path="StockReceivingReport" element={<StockReceivingReport />} />
-                <Route path="StockTakingReport" element={<ManagementStockTakingReport />} />
-                <Route path="DispensingReports" element={<DispensingReports />} />
-                <Route path="PaymentReports" element={<PaymentReports />} />
-                <Route path="ManagementReports" element={<ManagementReports />} />
-              </Route>
+                  <Route path="/management/*" element={<PrivateRoute element={<ManagementLayout />} />}>
+                    <Route index element={<ManagementDashboard />} />
+                    <Route path="inventory" element={<Inventory />} />
+                    <Route path="inventory-reports" element={<InventoryReports />} />
+                    <Route path="stock-status-report" element={<StockStatudReport />} />
+                    <Route path="stock-adjusting" element={<StockAdjusting />} />
+                    <Route path="stock-receiving" element={<StockReceiving />} />
+                    <Route path="stock-receiving-report" element={<StockReceivingReport />} />
+                    <Route path="stock-taking-report" element={<ManagementStockTakingReport />} />
+                    <Route path="dispensing-reports" element={<DispensingReports />} />
+                    <Route path="payment-reports" element={<PaymentReports />} />
+                    <Route path="management-reports" element={<ManagementReports />} />
+                  </Route>
 
-              <Route path="/store/*" element={<PrivateRoute element={<StoreLayout />} />}>
-                <Route index element={<StoreDashboard />} />
-                <Route path="itemsMAnagers" element={<ItemsManagers />} />
-                <Route path="StockTaking" element={<StockTaking />} />
-                <Route path="StockTakingReport" element={<StockTakingReport />} />
-                <Route path="StockAdjustments" element={<StockAdjustments />} />
-                <Route path="ReceivingStock" element={<ReceivingStock />} />
-                <Route path="StoreReport" element={<StoreReports />} />
-              </Route>
+                  <Route path="/store/*" element={<PrivateRoute element={<StoreLayout />} />}>
+                    <Route index element={<StoreDashboard />} />
+                    <Route path="items-managers" element={<ItemsManagers />} />
+                    <Route path="stock-taking" element={<StockTaking />} />
+                    <Route path="stock-taking-report" element={<StockTakingReport />} />
+                    <Route path="stock-adjustments" element={<StockAdjustments />} />
+                    <Route path="receiving-stock" element={<ReceivingStock />} />
+                    <Route path="store-reports" element={<StoreReports />} />
+                  </Route>
 
-              <Route path="/settings/*" element={<PrivateRoute element={<SettingsLayout />} />}>
-                <Route path="pharmacy-settings" element={<PharmacySettings />} />
-                <Route path="pharmacy" element={<PharmacySettings />} />
-                <Route path="payment-methods" element={<PaymentMethods />} />
-                <Route path="stock-taking-reasons" element={<StockTakingReasons />} />
-                <Route path="adjustment-reasons" element={<AdjustmentReasons />} />
-                <Route path="expense-categories" element={<ExpenseCategories />} />
-                <Route path="users" element={<UserManagement />} />
-                <Route path="system" element={<SystemSettings />} />
-              </Route>
-            </Routes>
-          </Suspense>
-        </Router>
-      </SettingsProvider>
-    </AuthProvider>
-  </ThemeProvider>
+                  <Route path="/settings/*" element={<PrivateRoute element={<SettingsLayout />} />}>
+                    <Route path="pharmacy" element={<PharmacySettings />} />
+                    <Route path="users" element={<UserManagement />} />
+                    <Route path="payment-methods" element={<PaymentMethods />} />
+                    <Route path="stock-taking-reasons" element={<StockTakingReasons />} />
+                    <Route path="adjustment-reasons" element={<AdjustmentReasons />} />
+                    <Route path="expense-categories" element={<ExpenseCategories />} />
+                    <Route path="system" element={<SystemSettings />} />
+                  </Route>
+                </Routes>
+              </Suspense>
+            </Router>
+          </SettingsProvider>
+        </AuthProvider>
+      </ThemeProvider>
+    </QueryClientProvider>
+  </ErrorBoundary>
 );
 
 export default App;

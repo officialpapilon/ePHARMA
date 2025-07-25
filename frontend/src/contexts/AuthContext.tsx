@@ -5,6 +5,10 @@ interface User {
   id: number;
   name: string | null;
   username: string;
+  first_name?: string | null;
+  last_name?: string | null;
+  email?: string | null;
+  position?: string | null;
 }
 
 interface AuthContextType {
@@ -57,6 +61,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         id: data.user_id,
         name: data.name || data.username || username,
         username: data.username || username,
+        first_name: data.first_name || null,
+        last_name: data.last_name || null,
+        email: data.email || null,
+        position: data.position || null,
       };
       setUser(userData);
       setIsAuthenticated(true);

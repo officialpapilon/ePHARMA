@@ -42,7 +42,7 @@ const LoginPage: React.FC = () => {
 
     try {
       await login(username, password, "1");
-      navigate("/");
+      navigate("/pharmacy");
     } catch (err: any) {
       setError(err.message || "Invalid credentials. Please try again.");
       setLoading(false);

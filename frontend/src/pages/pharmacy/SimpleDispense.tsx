@@ -19,6 +19,7 @@ import { PaymentOnDispense } from "./PaymentOnDispense";
 import SuccessModal from "../../components/UI/Modal/SuccessModal";
 import { Transition } from "react-transition-group";
 import { useAuth } from "../../contexts/AuthContext";
+import { useTheme } from "@mui/material";
 
 // Define types
 interface CartItem {
@@ -451,8 +452,10 @@ const SimpleDispensing: React.FC = () => {
     exited: { opacity: 0, transform: "translateX(100%)" },
   };
 
+  const theme = useTheme();
+
   return (
-    <div className="min-h-screen bg-gray-50">
+    <main style={{ minHeight: '100vh', width: '100%', maxWidth: '100vw', background: theme.palette.background.default, boxSizing: 'border-box', padding: '16px' }}>
       <header className="bg-white shadow-sm">
         <div className="mx-auto px-4 py-4 sm:px-6 lg:px-8 flex justify-between items-center">
           <div className="flex items-center mb-4">
@@ -706,7 +709,7 @@ const SimpleDispensing: React.FC = () => {
           onClose={() => setShowScanner(false)}
         />
       )}
-    </div>
+    </main>
   );
 };
 

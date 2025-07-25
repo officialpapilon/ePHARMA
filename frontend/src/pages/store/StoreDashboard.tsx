@@ -27,7 +27,7 @@ const Dashboard = () => {
   const totalValue = 124568.50;
   
   return (
-    <div style={{ padding: 24, background: theme.palette.background.default, minHeight: '100vh' }}>
+    <div style={{ padding: '16px', background: theme.palette.background.default, minHeight: '100vh', width: '100%', maxWidth: '100vw', boxSizing: 'border-box' }}>
       <h2 style={{ fontSize: 24, fontWeight: 700, color: theme.palette.text.primary, marginBottom: 24 }}>Store Manager Dashboard</h2>
       
       {/* Stats Cards */}

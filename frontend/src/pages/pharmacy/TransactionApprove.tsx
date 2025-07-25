@@ -5,6 +5,7 @@ import { API_BASE_URL } from '../../../constants';
 import Spinner from '../../components/UI/Spinner/index.tsx';
 import CustomDatePicker from '../../components/UI/DatePicker/CustomDatePicker.tsx';
 import { Transition } from 'react-transition-group';
+import { useTheme } from '@mui/material';
 
 interface Customer {
   id: string;
@@ -60,6 +61,7 @@ interface Medicine {
 }
 
 const DispenseApproval: React.FC = () => {
+  const theme = useTheme();
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [transactions, setTransactions] = useState<ApprovedTransaction[]>([]);
   const [medicines, setMedicines] = useState<Medicine[]>([]);
@@ -394,7 +396,7 @@ const DispenseApproval: React.FC = () => {
   const undispensedTransactions = approvedTransactions.filter(txn => !dispensedPaymentIds.has(String(txn.id)) && !dispensedTransactionIds.has(String(txn.transaction_ID)));
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <main style={{ minHeight: '100vh', width: '100%', maxWidth: '100vw', background: theme.palette.background.default, boxSizing: 'border-box', padding: '16px' }}>
       <header className="bg-white shadow-sm">
         <div className="mx-auto px-4 py-4 sm:px-6 lg:px-8 flex justify-between items-center">
           <div className="flex items-center">
@@ -661,7 +663,7 @@ const DispenseApproval: React.FC = () => {
           </div>
         </div>
       </main>
-    </div>
+    </main>
   );
 };
 

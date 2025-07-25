@@ -103,7 +103,7 @@ const StockManager: React.FC = () => {
   };
 
   return (
-    <div style={{ minHeight: '100vh', background: theme.palette.background.default, padding: 32 }}>
+    <main style={{ minHeight: '100vh', width: '100%', maxWidth: '100vw', background: theme.palette.background.default, boxSizing: 'border-box', padding: '16px' }}>
       <header style={{ background: theme.palette.background.paper, boxShadow: theme.shadows[1], marginBottom: 24 }}>
         <div style={{ maxWidth: '100%', padding: '16px 24px' }}>
           <h1 style={{ fontSize: 22, fontWeight: 700, color: theme.palette.text.primary }}>Stock Manager</h1>
@@ -213,7 +213,7 @@ const StockManager: React.FC = () => {
           </div>
         </div>
       </main>
-    </div>
+    </main>
   );
 };
 

@@ -5,7 +5,7 @@ import { useTheme } from '@mui/material';
 const Dashboard = () => {
   const theme = useTheme();
   return (
-    <div style={{ padding: 24, background: theme.palette.background.default, minHeight: '100vh' }}>
+    <div style={{ padding: '16px', background: theme.palette.background.default, minHeight: '100vh', width: '100%', maxWidth: '100vw', boxSizing: 'border-box' }}>
       <h2 style={{ fontSize: 24, fontWeight: 700, color: theme.palette.text.primary, marginBottom: 24 }}>Wholesale Dashboard</h2>
       
       {/* Stats Cards */}
@@ -92,9 +92,8 @@ const Dashboard = () => {
             {[35, 45, 30, 60, 75, 85, 70, 65, 80, 90, 95, 100].map((height, index) => (
               <div key={index} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                 <div 
-                  style={{ width: '100%', background: theme.palette.primary.main, borderRadius: '8px 8px 0 0' }}
+                  style={{ width: '100%', background: theme.palette.primary.main, borderRadius: '8px 8px 0 0', height: `${height}%` }}
                   className="rounded-t"
-                  style={{ height: `${height}%` }}
                 ></div>
                 <div style={{ fontSize: 12, color: theme.palette.text.secondary, marginTop: 8 }}>{['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][index]}</div>
               </div>

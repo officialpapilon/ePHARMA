@@ -9,60 +9,125 @@ class PatientsController extends Controller
 {
     public function index()
     {
-        $patients = Patients::all();
-        return response()->json($patients);
+        $patients = Patients::orderBy('first_name', 'asc')->get();
+        
+        return response()->json([
+            'success' => true,
+            'data' => $patients,
+            'message' => 'Patients retrieved successfully'
+        ]);
     }
 
     public function store(Request $request)
     {
-        $validatedData = $request->validate([
-            'first_name' => 'required|string|max:255',
-            'last_name' => 'required|string|max:255',
-            'phone' => 'required|string|unique:patients,phone',
-            'address' => 'nullable|string',
-            'age' => 'nullable|integer',
-            'email' => 'nullable|string',
-            'gender' => 'nullable|string',
-            'status' => 'nullable|string',
-            'created_by' => 'nullable|string',
-            'updated_by' => 'nullable|string',
-        ]);
+        try {
+            $validatedData = $request->validate([
+                'first_name' => 'required|string|max:255',
+                'last_name' => 'required|string|max:255',
+                'phone' => 'nullable|string|unique:patients,phone',
+                'address' => 'nullable|string',
+                'age' => 'nullable|integer|min:0|max:150',
+                'email' => 'nullable|string|email|unique:patients,email',
+                'gender' => 'nullable|string|in:Male,Female',
+                'status' => 'nullable|string',
+                'created_by' => 'nullable|string',
+                'updated_by' => 'nullable|string',
+            ]);
 
-        $patient = Patients::create($validatedData);
-        return response()->json($patient, 201);
+            $patient = Patients::create($validatedData);
+            
+            return response()->json([
+                'success' => true,
+                'data' => $patient,
+                'message' => 'Patient created successfully'
+            ], 201);
+            
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed',
+                'errors' => $e->errors()
+            ], 422);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to create patient',
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
 
     public function show($id)
     {
-        $patient = Patients::findOrFail($id);
-        return response()->json($patient);
+        try {
+            $patient = Patients::findOrFail($id);
+            
+            return response()->json([
+                'success' => true,
+                'data' => $patient,
+                'message' => 'Patient retrieved successfully'
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Patient not found'
+            ], 404);
+        }
     }
 
     public function update(Request $request, $id)
     {
-        $patient = Patient::findOrFail($id);
+        try {
+            $patient = Patients::findOrFail($id);
 
-        $validatedData = $request->validate([
-            'first_name' => 'sometimes|required|string|max:255',
-            'last_name' => 'sometimes|required|string|max:255',
-            'phone' => 'sometimes|required|string|unique:patients,phone,' . $patient->id,
-            'address' => 'nullable|string',
-            'age' => 'nullable|integer',
-            'email' => 'sometimes|required|string|email|unique:patients,email,' . $patient->id,
-            'gender' => 'nullable|string',
-            'status' => 'nullable|string',
-            'created_by' => 'nullable|string',
-            'updated_by' => 'nullable|string',
-        ]);
+            $validatedData = $request->validate([
+                'first_name' => 'sometimes|required|string|max:255',
+                'last_name' => 'sometimes|required|string|max:255',
+                'phone' => 'nullable|string|unique:patients,phone,' . $patient->id,
+                'address' => 'nullable|string',
+                'age' => 'nullable|integer|min:0|max:150',
+                'email' => 'nullable|string|email|unique:patients,email,' . $patient->id,
+                'gender' => 'nullable|string|in:Male,Female',
+                'status' => 'nullable|string',
+                'updated_by' => 'nullable|string',
+            ]);
 
-        $patient->update($validatedData);
-        return response()->json($patient);
+            $patient->update($validatedData);
+            
+            return response()->json([
+                'success' => true,
+                'data' => $patient,
+                'message' => 'Patient updated successfully'
+            ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed',
+                'errors' => $e->errors()
+            ], 422);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to update patient'
+            ], 500);
+        }
     }
 
     public function destroy($id)
     {
-        $patient = Patients::findOrFail($id);
-        $patient->delete();
-        return response()->json(null, 204);
+        try {
+            $patient = Patients::findOrFail($id);
+            $patient->delete();
+            
+            return response()->json([
+                'success' => true,
+                'message' => 'Patient deleted successfully'
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to delete patient'
+            ], 500);
+        }
     }
 }

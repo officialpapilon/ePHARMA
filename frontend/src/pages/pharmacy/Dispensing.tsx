@@ -85,8 +85,9 @@ const Dispensing: React.FC = () => {
       if (!response.ok) throw new Error(`Failed to fetch customers: ${response.status} - ${text}`);
       if (!text.trim()) throw new Error('Empty response received');
       const data = JSON.parse(text);
-      if (!Array.isArray(data)) throw new Error('Expected an array of customers');
-      setCustomers(data.map((c: any) => ({ ...c, id: String(c.id) })));
+      const customersArray = Array.isArray(data) ? data : Array.isArray(data.data) ? data.data : [];
+      if (!Array.isArray(customersArray)) throw new Error('Expected an array of customers');
+      setCustomers(customersArray.map((c: any) => ({ ...c, id: String(c.id) })));
     } catch (err: any) {
       setError(err.message);
       setCustomers([]);
@@ -265,8 +266,33 @@ const Dispensing: React.FC = () => {
     m.product_name.toLowerCase().includes(medicineSearchTerm.toLowerCase())
   );
 
+  const increaseCartItem = (id: string) => {
+    setCart(cart => cart.map(item => item.id === id ? { ...item, quantity: item.quantity + 1 } : item));
+  };
+  const decreaseCartItem = (id: string) => {
+    setCart(cart => cart.flatMap(item => {
+      if (item.id === id) {
+        if (item.quantity > 1) {
+          return { ...item, quantity: item.quantity - 1 };
+        } else {
+          // Remove item if quantity is 1
+          return [];
+        }
+      }
+      return item;
+    }));
+  };
+
+  // Update setCartItemQuantity to clamp value on both change and blur
+  const setCartItemQuantity = (id: string, value: string, max: number) => {
+    let qty = parseInt(value.replace(/[^0-9]/g, ''));
+    if (!qty || qty < 1) qty = 1;
+    if (qty > max) qty = max;
+    setCart(cart => cart.map(item => item.id === id ? { ...item, quantity: qty } : item));
+  };
+
   return (
-    <div style={{ minHeight: '100vh', background: theme.palette.background.default }}>
+    <main style={{ minHeight: '100vh', width: '100%', maxWidth: '100vw', background: theme.palette.background.default, boxSizing: 'border-box', padding: '16px' }}>
       {/* Header */}
       <header style={{ background: `linear-gradient(90deg, ${theme.palette.primary.main} 0%, ${theme.palette.primary.light} 100%)`, boxShadow: theme.shadows[2] }}>
         <div style={{ maxWidth: 1440, margin: '0 auto', padding: '16px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -323,7 +349,7 @@ const Dispensing: React.FC = () => {
       {loading && <Spinner />}
 
       {/* Main Content */}
-      <main className="mx-auto px-4 py-6 max-w-auto">
+      <section className="mx-auto px-4 py-6 max-w-auto">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Patient Panel - Left Side (25%) */}
           <div style={{ background: theme.palette.background.paper, borderRadius: 20, boxShadow: theme.shadows[1], border: `1px solid ${theme.palette.divider}` }} className="lg:col-span-3 overflow-hidden">
@@ -391,9 +417,9 @@ const Dispensing: React.FC = () => {
           </div>
 
           {/* Main Workspace - Right Side (75%) */}
-          <div className="lg:col-span-9 space-y-6">
+          <div className="lg:col-span-9 grid grid-cols-1 lg:grid-cols-4 gap-6">
             {/* Patient Info Card */}
-            <div style={{ background: theme.palette.background.paper, borderRadius: 20, boxShadow: theme.shadows[1], border: `1px solid ${theme.palette.divider}` }} className="p-5">
+            <div style={{ background: theme.palette.background.paper, borderRadius: 20, boxShadow: theme.shadows[1], border: `1px solid ${theme.palette.divider}` }} className="p-5 lg:col-span-4">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                 <h3 style={{ color: theme.palette.text.primary, fontWeight: 600, display: 'flex', alignItems: 'center' }}>
                   <User style={{ marginRight: 8, width: 20, height: 20 }} />
@@ -428,8 +454,8 @@ const Dispensing: React.FC = () => {
               )}
             </div>
 
-            {/* Medicine Selection - Takes majority of space */}
-            <div style={{ background: theme.palette.background.paper, borderRadius: 20, boxShadow: theme.shadows[1], border: `1px solid ${theme.palette.divider}` }} className="p-5">
+            {/* Medicine Selection and Cart Side by Side */}
+            <div style={{ background: theme.palette.background.paper, borderRadius: 20, boxShadow: theme.shadows[1], border: `1px solid ${theme.palette.divider}` }} className="p-5 lg:col-span-3">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                 <h3 style={{ color: theme.palette.text.primary, fontWeight: 600, display: 'flex', alignItems: 'center' }}>
                   <Pill style={{ marginRight: 8, width: 20, height: 20 }} />
@@ -447,12 +473,23 @@ const Dispensing: React.FC = () => {
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(1, 1fr)', gap: 12, maxHeight: 500, overflowY: 'auto', padding: '8px 0' }}>
+              <div
+                style={{
+                  display: 'grid',
+                  gap: 12,
+                  maxHeight: 500,
+                  overflowY: 'auto',
+                  padding: '8px 0',
+                  gridTemplateColumns: 'repeat(1, 1fr)',
+                }}
+                className="medicine-grid-responsive"
+              >
                 {filteredMedicines.map((medicine) => (
                   <div 
                     key={medicine.id}
-                    style={{ border: `1px solid ${theme.palette.divider}`, borderRadius: 12, padding: 12, transition: 'all 0.2s', cursor: 'pointer', hover: { border: `1px solid ${theme.palette.primary.main}` } }}
+                    style={{ border: `1px solid ${theme.palette.divider}`, borderRadius: 12, padding: 12, transition: 'all 0.2s', cursor: 'pointer' }}
                     onClick={() => addToCart(medicine)}
+                    className="hover:border-primary-main"
                   >
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                       <div>
@@ -489,7 +526,7 @@ const Dispensing: React.FC = () => {
             </div>
 
             {/* Dispensing Cart Section with Process Button */}
-            <div style={{ background: theme.palette.background.paper, borderRadius: 20, boxShadow: theme.shadows[1], border: `1px solid ${theme.palette.divider}` }} className="overflow-hidden">
+            <div style={{ background: theme.palette.background.paper, borderRadius: 20, boxShadow: theme.shadows[1], border: `1px solid ${theme.palette.divider}` }} className="overflow-hidden lg:col-span-1">
               <div style={{ background: theme.palette.background.paper, padding: 12, borderBottom: `1px solid ${theme.palette.divider}` }}>
                 <h3 style={{ color: theme.palette.text.primary, fontWeight: 600, display: 'flex', alignItems: 'center' }}>
                   <ShoppingCart style={{ marginRight: 8, width: 20, height: 20 }} />
@@ -507,29 +544,46 @@ const Dispensing: React.FC = () => {
               
               <div style={{ borderBottom: `1px solid ${theme.palette.divider}` }}>
                 {cart.length > 0 ? (
-                  cart.map((item) => (
-                    <div key={item.id} style={{ padding: 12 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <div>
-                          <h4 style={{ fontWeight: 600, color: theme.palette.text.primary }}>{item.medicineName}</h4>
-                          <p style={{ fontSize: 13, color: theme.palette.text.secondary }}>
-                            {item.quantity} × Tsh {item.price.toFixed(2)}
-                          </p>
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center' }}>
-                          <span style={{ fontWeight: 600, color: theme.palette.text.primary, marginRight: 16 }}>
-                            Tsh {(item.quantity * item.price).toFixed(2)}
-                          </span>
-                          <button
-                            onClick={() => removeFromCart(item.id)}
-                            style={{ padding: 8, background: theme.palette.error.light, color: theme.palette.error.dark, borderRadius: 8, border: 'none', cursor: 'pointer', transition: 'background 0.2s' }}
-                          >
-                            <Trash2 size={18} />
-                          </button>
+                  cart.map((item) => {
+                    // Find the medicine to get the current stock
+                    const medicine = medicines.find(m => m.product_id === item.medicineId || m.id === item.medicineId);
+                    const maxStock = medicine ? medicine.current_quantity : 9999;
+                    return (
+                      <div key={item.id} style={{ padding: 12 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <div>
+                            <h4 style={{ fontWeight: 600, color: theme.palette.text.primary }}>{item.medicineName}</h4>
+                            <p style={{ fontSize: 13, color: theme.palette.text.secondary }}>
+                              <input
+                                type="number"
+                                min={1}
+                                max={maxStock}
+                                value={item.quantity}
+                                onChange={e => setCartItemQuantity(item.id, e.target.value, maxStock)}
+                                onBlur={e => setCartItemQuantity(item.id, e.target.value, maxStock)}
+                                style={{ width: 50, textAlign: 'center', margin: '0 8px', borderRadius: 4, border: '1px solid #ccc', background: '#fff' }}
+                              />
+                              <span style={{ fontSize: 12, color: theme.palette.text.secondary, marginLeft: 4 }}>
+                                / {maxStock} in stock
+                              </span>
+                              × Tsh {item.price.toFixed(2)}
+                            </p>
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center' }}>
+                            <span style={{ fontWeight: 600, color: theme.palette.text.primary, marginRight: 16 }}>
+                              Tsh {(item.quantity * item.price).toFixed(2)}
+                            </span>
+                            <button
+                              onClick={() => removeFromCart(item.id)}
+                              style={{ padding: 8, background: theme.palette.error.light, color: theme.palette.error.dark, borderRadius: 8, border: 'none', cursor: 'pointer', transition: 'background 0.2s' }}
+                            >
+                              <Trash2 size={18} />
+                            </button>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))
+                    );
+                  })
                 ) : (
                   <div style={{ padding: 24, textAlign: 'center', color: theme.palette.text.secondary }}>
                     <ShoppingCart style={{ margin: '0 auto', width: 40, height: 40, color: theme.palette.text.disabled }} />
@@ -552,7 +606,7 @@ const Dispensing: React.FC = () => {
             </div>
           </div>
         </div>
-      </main>
+      </section>
 
       {/* Add Patient Modal */}
       {showAddPatientModal && (
@@ -664,8 +718,34 @@ const Dispensing: React.FC = () => {
           </div>
         </div>
       )}
-    </div>
+    </main>
   );
 };
 
 export default Dispensing;
+
+// Responsive grid for medicine selection
+const style = document.createElement('style');
+style.innerHTML = `
+  @media (min-width: 640px) {
+    .medicine-grid-responsive {
+      grid-template-columns: repeat(2, 1fr) !important;
+    }
+  }
+  @media (min-width: 768px) {
+    .medicine-grid-responsive {
+      grid-template-columns: repeat(3, 1fr) !important;
+    }
+  }
+  @media (min-width: 1024px) {
+    .medicine-grid-responsive {
+      grid-template-columns: repeat(4, 1fr) !important;
+    }
+  }
+  @media (min-width: 1280px) {
+    .medicine-grid-responsive {
+      grid-template-columns: repeat(5, 1fr) !important;
+    }
+  }
+`;
+document.head.appendChild(style);

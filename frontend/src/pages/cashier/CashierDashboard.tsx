@@ -135,7 +135,7 @@ const Dashboard = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#f5f7fa] p-6 space-y-6">
+    <div style={{ padding: '16px', background: '#f5f7fa', minHeight: '100vh', width: '100%', maxWidth: '100vw', boxSizing: 'border-box' }}>
       <h1 className="text-2xl font-semibold text-[#2d3748]">Dashboard Overview</h1>
 
       {loading && <div className="text-center text-[#4a5568]">Loading dashboard data...</div>}
