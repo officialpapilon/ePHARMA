@@ -17,16 +17,17 @@ class User extends Authenticatable
     protected $fillable = [
         'first_name',
         'last_name',
-        'phone_number',
-        'address',
-        'position',
         'email',
         'username',
         'password',
+        'position',
+        'phone_number',
+        'address',
         'belonged_branches',
-        'last_login_device',
+        'status',
         'last_login_at',
         'last_login_ip',
+        'last_login_device',
     ];
 
     protected $hidden = [
@@ -75,24 +76,35 @@ class User extends Authenticatable
     }
 
   
-    public function getBelongedBranchesArray(): array
+    /**
+     * Get belonged branches as array
+     */
+    public function getBelongedBranchesArray()
     {
-        $branches = $this->belonged_branches;
-    
-        if (is_numeric($branches)) {
-            return [(int)$branches];
+        if (!$this->belonged_branches) {
+            return [];
         }
-    
-        if (is_array($branches)) {
-            return array_map('intval', $branches);
+        
+        // If it's already an array (due to Laravel's array cast), return it
+        if (is_array($this->belonged_branches)) {
+            return $this->belonged_branches;
         }
-    
-        if (is_string($branches)) {
-            $decoded = json_decode($branches, true);
-            return is_array($decoded) ? array_map('intval', $decoded) : [];
+        
+        // If it's a string, decode it
+        if (is_string($this->belonged_branches)) {
+            $branches = json_decode($this->belonged_branches, true);
+            return is_array($branches) ? $branches : [];
         }
-    
+        
         return [];
+    }
+
+    /**
+     * Set belonged branches from array
+     */
+    public function setBelongedBranchesArray($branches)
+    {
+        $this->belonged_branches = is_array($branches) ? json_encode($branches) : null;
     }
 
   

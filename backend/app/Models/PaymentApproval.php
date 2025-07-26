@@ -23,7 +23,19 @@ class PaymentApproval extends Model
         'approved_quantity',
         'approved_amount',
         'approved_payment_method',
+        'dispense_id',
+        'created_by',
     ];
-    
 
+    protected $casts = [
+        'approved_at' => 'datetime',
+        'created_by' => 'integer',
+        'approved_by' => 'integer',
+    ];
+
+    // Relationships
+    public function patient()
+    {
+        return $this->belongsTo(Patients::class, 'Patient_ID', 'id');
+    }
 }

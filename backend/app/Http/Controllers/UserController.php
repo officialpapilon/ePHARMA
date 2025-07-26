@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
 
 class UserController extends Controller
 {
@@ -24,4 +25,32 @@ class UserController extends Controller
     ]);
 }
 
+    /**
+     * Change the authenticated user's password
+     * Route: POST /api/user/change-password
+     * Body: { old_password, new_password }
+     */
+    public function changePassword(Request $request)
+    {
+        $user = $request->user();
+        $request->validate([
+            'old_password' => 'required|string',
+            'new_password' => 'required|string|min:8',
+        ]);
+
+        if (!Hash::check($request->old_password, $user->password)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Old password is incorrect.'
+            ], 422);
+        }
+
+        $user->password = bcrypt($request->new_password);
+        $user->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Password changed successfully.'
+        ]);
+    }
 }

@@ -61,6 +61,23 @@ class LoginController extends Controller
                 'user_id' => $user->id,
                 'branch_id' => $request->branch_id,
                 'branch_name' => $branch->name ?? null,
+                // Enhanced user details for frontend
+                'user' => [
+                    'id' => $user->id,
+                    'first_name' => $user->first_name,
+                    'last_name' => $user->last_name,
+                    'username' => $user->username,
+                    'email' => $user->email,
+                    'position' => $user->position,
+                    'phone_number' => $user->phone_number,
+                    'address' => $user->address,
+                    'belonged_branches' => $user->getBelongedBranchesArray(),
+                    'created_at' => $user->created_at,
+                    'updated_at' => $user->updated_at,
+                    'last_login_at' => $user->last_login_at,
+                    'last_login_ip' => $user->last_login_ip,
+                    'last_login_device' => $user->last_login_device,
+                ],
             ], 200);
 
         } catch (ValidationException $e) {
