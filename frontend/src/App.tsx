@@ -26,6 +26,7 @@ const CashierDashboard = React.lazy(() => import("./pages/cashier/CashierDashboa
 const Payment = React.lazy(() => import("./pages/cashier/Payment"));
 const PaymentReport = React.lazy(() => import("./pages/cashier/PaymentReport"));
 const PrintRecords = React.lazy(() => import("./pages/cashier/PrintRecords"));
+const FinancialActivities = React.lazy(() => import("./pages/cashier/FinancialActivities"));
 const ManagementLayout = React.lazy(() => import("./pages/management/ManagementLayout"));
 const StockStatudReport = React.lazy(() => import("./pages/management/StockStatusReport"));
 const InventoryReports = React.lazy(() => import("./pages/management/InventoryReports"));
@@ -97,6 +98,7 @@ const App: React.FC = () => (
                     <Route path="payment" element={<Payment />} />
                     <Route path="payment-report" element={<PaymentReport />} />
                     <Route path="print-records" element={<PrintRecords />} />
+                    <Route path="financial-activities" element={<FinancialActivities />} />
                   </Route>
 
                   <Route path="/pharmacy/*" element={<PrivateRoute element={<PharmacyLayout />} />}>

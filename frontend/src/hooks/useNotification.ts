@@ -1,56 +1,33 @@
-import { useState, useCallback } from 'react';
+import { useCallback } from 'react';
 
-interface NotificationState {
-  open: boolean;
-  message: string;
-  title?: string;
-  severity: 'success' | 'error' | 'warning' | 'info';
+interface NotificationOptions {
+  duration?: number;
+  severity?: 'success' | 'error' | 'warning' | 'info';
 }
 
 export const useNotification = () => {
-  const [notification, setNotification] = useState<NotificationState>({
-    open: false,
-    message: '',
-    severity: 'info',
-  });
-
-  const showNotification = useCallback((
-    message: string,
-    severity: 'success' | 'error' | 'warning' | 'info' = 'info',
-    title?: string
-  ) => {
-    setNotification({
-      open: true,
-      message,
-      severity,
-      title,
-    });
+  const showSuccess = useCallback((message: string, options?: NotificationOptions) => {
+    // For now, use console.log and alert as fallback
+    console.log('Success:', message);
+    alert(`Success: ${message}`);
   }, []);
 
-  const hideNotification = useCallback(() => {
-    setNotification(prev => ({ ...prev, open: false }));
+  const showError = useCallback((message: string, options?: NotificationOptions) => {
+    console.error('Error:', message);
+    alert(`Error: ${message}`);
   }, []);
 
-  const showSuccess = useCallback((message: string, title?: string) => {
-    showNotification(message, 'success', title);
-  }, [showNotification]);
+  const showWarning = useCallback((message: string, options?: NotificationOptions) => {
+    console.warn('Warning:', message);
+    alert(`Warning: ${message}`);
+  }, []);
 
-  const showError = useCallback((message: string, title?: string) => {
-    showNotification(message, 'error', title);
-  }, [showNotification]);
-
-  const showWarning = useCallback((message: string, title?: string) => {
-    showNotification(message, 'warning', title);
-  }, [showNotification]);
-
-  const showInfo = useCallback((message: string, title?: string) => {
-    showNotification(message, 'info', title);
-  }, [showNotification]);
+  const showInfo = useCallback((message: string, options?: NotificationOptions) => {
+    console.info('Info:', message);
+    alert(`Info: ${message}`);
+  }, []);
 
   return {
-    notification,
-    showNotification,
-    hideNotification,
     showSuccess,
     showError,
     showWarning,

@@ -6,10 +6,10 @@ import {
   DialogActions,
   IconButton,
   Typography,
-  Box,
   useTheme,
   useMediaQuery,
 } from '@mui/material';
+import { alpha } from '@mui/material/styles';
 import { Close } from '@mui/icons-material';
 
 interface ModalProps {
@@ -40,7 +40,7 @@ const Modal: React.FC<ModalProps> = ({
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
-  const handleClose = (event: any, reason: string) => {
+  const handleClose = (event: React.SyntheticEvent, reason: string) => {
     if (disableBackdropClick && reason === 'backdropClick') return;
     if (disableEscapeKeyDown && reason === 'escapeKeyDown') return;
     onClose();

@@ -72,17 +72,16 @@ const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
       }
 
       const token = localStorage.getItem('token');
-      const response = await fetch(`${API_BASE_URL}/api/employees/${userId}`, {
-        method: 'PUT',
+      const response = await fetch(`${API_BASE_URL}/api/employees/change-password`, {
+        method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
           'Accept': 'application/json',
         },
         body: JSON.stringify({
-          current_password: formData.current_password,
-          password: formData.new_password,
-          password_confirmation: formData.new_password_confirmation
+          old_password: formData.current_password,
+          new_password: formData.new_password,
         }),
       });
 
@@ -102,8 +101,8 @@ const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
           new_password_confirmation: ''
         });
       }, 1500);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'An unknown error occurred'   );
     } finally {
       setLoading(false);
     }

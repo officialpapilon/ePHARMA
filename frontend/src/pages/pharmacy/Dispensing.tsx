@@ -245,9 +245,12 @@ const Dispensing: React.FC = () => {
       const text = await response.text();
       if (!response.ok) throw new Error(`Failed to send to cashier: ${response.status} - ${text}`);
       const result = JSON.parse(text);
-      if (!result.data?.transaction_ID && !result.data?.transaction_id)
-        throw new Error('No transaction_ID returned from server');
-      setSuccess('Cart sent to cashier!');
+      
+      // Handle both old and new response formats
+      const transactionId = result.data?.transaction_ID || result.data?.transaction_id || result.transaction_ID;
+      if (!transactionId) throw new Error('No transaction_ID returned from server');
+      
+      setSuccess(`Cart sent to cashier! Transaction ID: ${transactionId}`);
       setCart([]);
       fetchMedicines();
       setTimeout(() => setSuccess(null), 3000);

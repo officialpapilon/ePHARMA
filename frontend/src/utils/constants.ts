@@ -53,6 +53,7 @@ export const ROUTES = {
     PAYMENT: '/cashier/payment',
     PAYMENT_REPORT: '/cashier/payment-report',
     PRINT_RECORDS: '/cashier/print-records',
+    FINANCIAL_ACTIVITIES: '/cashier/financial-activities',
   },
   MANAGEMENT: {
     BASE: '/management',

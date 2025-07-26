@@ -9,6 +9,9 @@ interface User {
   last_name?: string | null;
   email?: string | null;
   position?: string | null;
+  phone_number?: string | null;
+  address?: string | null;
+  belonged_branches?: number[];
 }
 
 interface AuthContextType {
@@ -48,27 +51,74 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         body: JSON.stringify({ username, password, branch_id: branchId }),
       });
       if (!response.ok) {
-        const errorData = await response.json();
+        const errorText = await response.text();
+        let errorData;
+        try {
+          errorData = JSON.parse(errorText);
+        } catch {
+          errorData = { message: errorText || 'Login failed' };
+        }
         throw new Error(errorData.message || 'Login failed');
       }
-      const data = await response.json();
-      // Example: { token, user_id, name, username, ... }
+      const responseText = await response.text();
+      let data;
+      try {
+        data = JSON.parse(responseText);
+      } catch {
+        throw new Error('Invalid response format from server');
+      }
+      
       if (!data.token) {
         throw new Error('No token received from server');
       }
+      
       localStorage.setItem('token', data.token);
-      const userData: User = {
-        id: data.user_id,
-        name: data.name || data.username || username,
-        username: data.username || username,
-        first_name: data.first_name || null,
-        last_name: data.last_name || null,
-        email: data.email || null,
-        position: data.position || null,
-      };
-      setUser(userData);
-      setIsAuthenticated(true);
-      localStorage.setItem('user', JSON.stringify(userData));
+      
+      // Store branch info from login response
+      if (data.branch_id) {
+        localStorage.setItem('branch_id', data.branch_id.toString());
+      }
+      if (data.branch_name) {
+        localStorage.setItem('branch_name', data.branch_name);
+      }
+      
+      // Use enhanced user data from login response
+      if (data.user) {
+        const userData: User = {
+          id: data.user.id,
+          name: data.user.first_name && data.user.last_name 
+            ? `${data.user.first_name} ${data.user.last_name}` 
+            : data.user.username,
+          username: data.user.username,
+          first_name: data.user.first_name || null,
+          last_name: data.user.last_name || null,
+          email: data.user.email || null,
+          position: data.user.position || null,
+          phone_number: data.user.phone_number || null,
+          address: data.user.address || null,
+          belonged_branches: data.user.belonged_branches || [],
+        };
+        setUser(userData);
+        setIsAuthenticated(true);
+        localStorage.setItem('user', JSON.stringify(userData));
+      } else {
+        // Fallback to old format if user data not available
+        const userData: User = {
+          id: data.user_id,
+          name: data.name || data.username || username,
+          username: data.username || username,
+          first_name: data.first_name || null,
+          last_name: data.last_name || null,
+          email: data.email || null,
+          position: data.position || null,
+          phone_number: data.phone_number || null,
+          address: data.address || null,
+          belonged_branches: data.belonged_branches || [],
+        };
+        setUser(userData);
+        setIsAuthenticated(true);
+        localStorage.setItem('user', JSON.stringify(userData));
+      }
     } catch (err) {
       setUser(null);
       setIsAuthenticated(false);
@@ -83,6 +133,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsAuthenticated(false);
     localStorage.removeItem('user');
     localStorage.removeItem('token');
+    localStorage.removeItem('branch_id');
+    localStorage.removeItem('branch_name');
   };
 
   return (
