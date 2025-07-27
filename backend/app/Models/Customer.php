@@ -9,8 +9,14 @@ class Customer extends Model
 {
     use HasFactory;
 
-    public $incrementing = false;
+    protected $table = 'patients';
+    
+
+    protected $primaryKey = 'id';
+
+    public $incrementing = true;
+
     protected $keyType = 'integer';
 
-    protected $fillable = ['id', 'first_name', 'last_name', 'phone', 'address', 'age'];
+    protected $fillable = ['first_name', 'last_name', 'phone', 'address', 'age'];
 }

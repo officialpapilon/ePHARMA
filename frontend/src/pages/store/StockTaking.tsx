@@ -1,64 +1,123 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Plus, Trash2, Save, Upload } from 'lucide-react';
-import * as XLSX from 'xlsx';
+import {
+  Search,
+  Plus,
+  Save,
+  RefreshCw,
+  AlertCircle,
+  CheckCircle,
+  XCircle,
+  Package,
+  Calculator,
+  FileText,
+  Download,
+  Upload,
+  Filter,
+  Eye,
+  Edit
+} from 'lucide-react';
+import { useTheme } from '@mui/material';
 import { API_BASE_URL } from '../../../constants';
+import * as XLSX from 'xlsx';
 
-interface Batch {
+interface StockTakingItem {
+  id?: string;
+  product_id: string;
+  product_name: string;
   batch_no: string;
-  product_quantity: number;
-  manufacture_date: string;
-  expire_date: string;
-}
-
-interface Product {
-  product_id: number;
-  batches: Batch[];
-}
-
-interface StockTaking {
-  id: number;
-  products: Product[];
-  created_by: string;
-  created_at: string;
-  updated_at: string;
+  expected_quantity: number;
+  actual_quantity: number;
+  difference: number;
+  unit_price: number;
+  total_value: number;
+  notes: string;
+  status: 'pending' | 'completed' | 'discrepancy';
+  counted_by?: string;
+  counted_at?: string;
 }
 
 interface Medicine {
   id: number;
-  name: string;
-  category: string;
-  product_unit: string;
-  price: number;
-  created_by: string;
+  product_id: string;
+  product_name: string;
+  current_quantity: number;
+  batch_no: string;
+  product_price: string;
+  product_category: string;
+  expire_date: string;
 }
 
-const StockTaking = () => {
-  const [stockTakings, setStockTakings] = useState<StockTaking[]>([]);
+const StockTaking: React.FC = () => {
+  const theme = useTheme();
+  const [stockTakingItems, setStockTakingItems] = useState<StockTakingItem[]>([]);
   const [medicines, setMedicines] = useState<Medicine[]>([]);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [productSearchTerm, setProductSearchTerm] = useState('');
-  const [selectedProductId, setSelectedProductId] = useState<number | null>(null);
-  const [cart, setCart] = useState<Product[]>([]);
-  const [itemDetails, setItemDetails] = useState<{ batches: Batch[] }>({ batches: [] });
+  const [filteredItems, setFilteredItems] = useState<StockTakingItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+
+  // Filters and search
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('');
+
+  // Form states
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [selectedItem, setSelectedItem] = useState<StockTakingItem | null>(null);
+  const [newItem, setNewItem] = useState<StockTakingItem>({
+    product_id: '',
+    product_name: '',
+    batch_no: '',
+    expected_quantity: 0,
+    actual_quantity: 0,
+    difference: 0,
+    unit_price: 0,
+    total_value: 0,
+    notes: '',
+    status: 'pending'
+  });
 
   useEffect(() => {
-    if (!localStorage.getItem('token')) {
-      window.location.href = '/login';
-    } else {
-      fetchMedicines();
-      fetchStockTakings();
-    }
+    fetchMedicines();
+    initializeStockTaking();
   }, []);
 
+  useEffect(() => {
+    filterItems();
+  }, [stockTakingItems, searchTerm, statusFilter, categoryFilter]);
+
+  const filterItems = () => {
+    let filtered = stockTakingItems;
+
+    if (searchTerm) {
+      filtered = filtered.filter(item =>
+        item.product_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.batch_no.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.product_id.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+
+    if (statusFilter) {
+      filtered = filtered.filter(item => item.status === statusFilter);
+    }
+
+    if (categoryFilter) {
+      filtered = filtered.filter(item => {
+        const medicine = medicines.find(m => m.product_id === item.product_id);
+        return medicine?.product_category === categoryFilter;
+      });
+    }
+
+    setFilteredItems(filtered);
+  };
+
   const fetchMedicines = async () => {
-    setLoading(true);
-    setError(null);
     try {
       const token = localStorage.getItem('token');
-      if (!token) throw new Error('No authentication token found');
-      const response = await fetch(`${API_BASE_URL}/api/medicines`, {
+      if (!token) return;
+
+      const response = await fetch(`${API_BASE_URL}/api/medicines-cache`, {
         headers: {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
@@ -66,148 +125,128 @@ const StockTaking = () => {
           'ngrok-skip-browser-warning': 'true',
         },
       });
-      const text = await response.text();
-      console.log('Raw response from /api/medicines:', text);
-      if (!response.ok) {
-        if (response.status === 401) {
-          localStorage.removeItem('token');
-          localStorage.removeItem('username');
-          window.location.href = '/login';
-          return;
-        }
-        throw new Error(`HTTP ${response.status}: ${text || 'Unknown error'}`);
+
+      if (response.ok) {
+        const data = await response.json();
+        setMedicines(data.data || []);
       }
-      if (!text) {
-        setMedicines([]);
-        return;
-      }
-      const data = JSON.parse(text);
-      if (!Array.isArray(data)) throw new Error('Expected an array of medicines');
-      const mappedMedicines = data.map((item: any) => ({
-        id: item.id || item.product_id,
-        name: item.product_name || 'Unknown Medicine',
-        category: item.product_category || 'Medicine',
-        product_unit: item.product_unit || 'Unit',
-        price: parseFloat(item.product_price) || 0,
-        created_by: item.created_by?.toString() || 'Unknown',
-      }));
-      if (mappedMedicines.some((m) => !m.id)) {
-        throw new Error('Some medicines are missing an id/product_id');
-      }
-      console.log('Mapped medicines:', mappedMedicines);
-      setMedicines(mappedMedicines);
     } catch (err: any) {
       console.error('Fetch medicines error:', err);
-      setError('Unable to fetch medicines: ' + err.message);
-      setMedicines([]);
-    } finally {
-      setLoading(false);
     }
   };
 
-  const fetchStockTakings = async () => {
+  const initializeStockTaking = () => {
+    // Initialize stock taking items from medicines
+    const items: StockTakingItem[] = medicines.map(medicine => ({
+      product_id: medicine.product_id,
+      product_name: medicine.product_name,
+      batch_no: medicine.batch_no,
+      expected_quantity: medicine.current_quantity,
+      actual_quantity: 0,
+      difference: 0,
+      unit_price: parseFloat(medicine.product_price),
+      total_value: 0,
+      notes: '',
+      status: 'pending' as const
+    }));
+
+    setStockTakingItems(items);
+  };
+
+  const handleAddItem = () => {
+    if (!newItem.product_id || newItem.actual_quantity < 0) {
+      setError('Please fill in all required fields');
+      return;
+    }
+
+    const selectedMedicine = medicines.find(m => m.product_id === newItem.product_id);
+    if (!selectedMedicine) {
+      setError('Selected product not found');
+      return;
+    }
+
+    const item: StockTakingItem = {
+      ...newItem,
+      id: `new-${Date.now()}`,
+      product_name: selectedMedicine.product_name,
+      expected_quantity: selectedMedicine.current_quantity,
+      difference: newItem.actual_quantity - selectedMedicine.current_quantity,
+      unit_price: parseFloat(selectedMedicine.product_price),
+      total_value: newItem.actual_quantity * parseFloat(selectedMedicine.product_price),
+      status: newItem.actual_quantity === selectedMedicine.current_quantity ? 'completed' : 'discrepancy'
+    };
+
+    setStockTakingItems(prev => [...prev, item]);
+    setNewItem({
+      product_id: '',
+      product_name: '',
+      batch_no: '',
+      expected_quantity: 0,
+      actual_quantity: 0,
+      difference: 0,
+      unit_price: 0,
+      total_value: 0,
+      notes: '',
+      status: 'pending'
+    });
+    setIsAddModalOpen(false);
+    setSuccess('Item added successfully');
+    setTimeout(() => setSuccess(null), 3000);
+  };
+
+  const handleEditItem = (item: StockTakingItem) => {
+    setSelectedItem(item);
+    setIsEditModalOpen(true);
+  };
+
+  const handleUpdateItem = (updatedItem: StockTakingItem) => {
+    setStockTakingItems(prev =>
+      prev.map(item =>
+        item.id === updatedItem.id ? updatedItem : item
+      )
+    );
+    setIsEditModalOpen(false);
+    setSelectedItem(null);
+    setSuccess('Item updated successfully');
+    setTimeout(() => setSuccess(null), 3000);
+  };
+
+  const handleSaveStockTaking = async () => {
+    if (stockTakingItems.length === 0) {
+      setError('No items to save');
+      return;
+    }
+
     setLoading(true);
     setError(null);
     try {
       const token = localStorage.getItem('token');
       if (!token) throw new Error('No authentication token found');
-      const response = await fetch(`${API_BASE_URL}/api/stock-taking`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'ngrok-skip-browser-warning': 'true',
-        },
-      });
-      const text = await response.text();
-      console.log('Raw response from /api/stock-taking:', text);
-      if (!response.ok) {
-        if (response.status === 401) {
-          localStorage.removeItem('token');
-          localStorage.removeItem('username');
-          window.location.href = '/login';
-          return;
+
+      const user = JSON.parse(localStorage.getItem('user') || '{}');
+
+      // Group items by product_id
+      const productsMap = new Map();
+      
+      stockTakingItems.forEach(item => {
+        if (!productsMap.has(item.product_id)) {
+          productsMap.set(item.product_id, {
+            product_id: item.product_id,
+            batches: []
+          });
         }
-        throw new Error(`HTTP ${response.status}: ${text || 'Unknown error'}`);
-      }
-      if (!text) {
-        setStockTakings([]);
-        return;
-      }
-      const data = JSON.parse(text);
-      if (!Array.isArray(data)) throw new Error('Invalid data format');
-      setStockTakings(data);
-    } catch (err: any) {
-      console.error('Fetch stock-taking error:', err);
-      setError('Unable to fetch stock-taking records: ' + err.message);
-      setStockTakings([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const updateMedicineCache = async (products: Product[]) => {
-    const token = localStorage.getItem('token');
-    if (!token) {
-      console.error('No authentication token found for cache update');
-      return; // Silently exit if no token
-    }
-
-    for (const product of products) {
-      const totalQuantity = product.batches.reduce((sum, batch) => sum + batch.product_quantity, 0);
-      const latestBatch = product.batches[product.batches.length - 1];
-      const payload = {
-        product_id: product.product_id,
-        current_quantity: totalQuantity,
-        manufacture_date: latestBatch.manufacture_date,
-        expire_date: latestBatch.expire_date,
-      };
-      console.log('Updating cache with payload:', JSON.stringify(payload, null, 2));
-
-      try {
-        const response = await fetch(`${API_BASE_URL}/api/medicines-cache`, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            'ngrok-skip-browser-warning': 'true',
-          },
-          body: JSON.stringify(payload),
+        
+        productsMap.get(item.product_id).batches.push({
+          batch_no: item.batch_no,
+          product_quantity: item.actual_quantity,
+          manufacture_date: new Date().toISOString().split('T')[0], // Default to today
+          expire_date: new Date().toISOString().split('T')[0] // Default to today
         });
-        const text = await response.text();
-        console.log(`Raw response from /api/medicines-cache for product ${product.product_id}:`, text);
-        if (!response.ok) {
-          console.error(`Cache update failed for product ${product.product_id}: HTTP ${response.status}: ${text}`);
-          // Do NOT setError here to keep it silent for the user
-        }
-      } catch (err: any) {
-        console.error('Update cache error for product', product.product_id, ':', err.message);
-        // Do NOT setError here to keep it silent for the user
-      }
-    }
-  };
+      });
 
-  const handleAddStockTaking = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const token = localStorage.getItem('token');
-      if (!token) throw new Error('No authentication token found');
+      const products = Array.from(productsMap.values());
 
-      if (cart.length === 0) {
-        throw new Error('Please add at least one product with batches.');
-      }
-
-      const payload = {
-        products: cart.map((item) => ({
-          product_id: item.product_id,
-          batches: item.batches,
-        })),
-        created_by: localStorage.getItem('username') || 'Admin',
-      };
-      console.log('Payload being sent to /api/stock-taking:', JSON.stringify(payload, null, 2));
-
+      // Send stock taking data
       const response = await fetch(`${API_BASE_URL}/api/stock-taking`, {
         method: 'POST',
         headers: {
@@ -216,665 +255,1063 @@ const StockTaking = () => {
           'Accept': 'application/json',
           'ngrok-skip-browser-warning': 'true',
         },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          products: products,
+          created_by: String(user.id || '1')
+        }),
       });
-      const text = await response.text();
-      console.log('Raw response from /api/stock-taking POST:', text);
+
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${text || 'Unknown error'}`);
+        const errorText = await response.text();
+        throw new Error(`Failed to save stock taking: ${response.status} - ${errorText}`);
       }
-      const addedStockTaking = JSON.parse(text);
-      setStockTakings([...stockTakings, addedStockTaking]);
 
-      // Attempt to update cache, but don’t let it affect the UI if it fails
-      await updateMedicineCache(cart);
-
-      // Reset UI regardless of cache update success
-      setCart([]);
-      setSelectedProductId(null);
-      setItemDetails({ batches: [] });
+      setSuccess(`Successfully saved ${stockTakingItems.length} stock taking records`);
+      setTimeout(() => setSuccess(null), 3000);
+      
+      // Clear the stock taking items after successful save
+      setStockTakingItems([]);
+      
     } catch (err: any) {
-      console.error('Add stock-taking error:', err);
-      setError(err.message || 'Unable to add stock-taking record.');
+      console.error('Save stock taking error:', err);
+      setError(err.message);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleUploadExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setLoading(true);
-    setError(null);
-    try {
-      const token = localStorage.getItem('token');
-      if (!token) throw new Error('No authentication token found');
-
-      const reader = new FileReader();
-      reader.onload = async (event) => {
-        const data = new Uint8Array(event.target?.result as ArrayBuffer);
-        const workbook = XLSX.read(data, { type: 'array' });
-        const sheet = workbook.Sheets[workbook.SheetNames[0]];
-        const jsonData: any[] = XLSX.utils.sheet_to_json(sheet);
-
-        const productsMap = new Map<number, Batch[]>();
-        jsonData.forEach((row: any) => {
-          const productId = parseInt(row.product_id);
-          if (!isNaN(productId)) {
-            if (!productsMap.has(productId)) {
-              productsMap.set(productId, []);
-            }
-            productsMap.get(productId)!.push({
-              batch_no: row.batch_no || 'Unknown',
-              product_quantity: parseInt(row.product_quantity) || 0,
-              manufacture_date: row.manufacture_date || '',
-              expire_date: row.expire_date || '',
-            });
-          }
-        });
-
-        if (productsMap.size === 0) {
-          throw new Error('No valid product IDs found in the Excel file.');
-        }
-
-        const payload = {
-          products: Array.from(productsMap.entries()).map(([product_id, batches]) => ({
-            product_id,
-            batches,
-          })),
-          created_by: localStorage.getItem('username') || 'Admin',
-        };
-        console.log('Payload being sent to /api/stock-taking:', JSON.stringify(payload, null, 2));
-
-        const response = await fetch(`${API_BASE_URL}/api/stock-taking`, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            'ngrok-skip-browser-warning': 'true',
-          },
-          body: JSON.stringify(payload),
-        });
-        const text = await response.text();
-        console.log('Raw response from /api/stock-taking POST:', text);
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${text || 'Unknown error'}`);
-        }
-        const addedStockTaking = JSON.parse(text);
-        setStockTakings([...stockTakings, addedStockTaking]);
-
-        await updateMedicineCache(payload.products);
-
-        fetchStockTakings();
-      };
-      reader.readAsArrayBuffer(file);
-    } catch (err: any) {
-      console.error('Upload Excel error:', err);
-      setError(err.message || 'Unable to upload Excel file.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const addToCart = () => {
-    if (selectedProductId === null) {
-      setError('Please select a product.');
+  const handleExportStockTaking = () => {
+    if (stockTakingItems.length === 0) {
+      setError('No items to export');
       return;
     }
-    const product = medicines.find((p) => p.id === selectedProductId);
-    if (!product) {
-      setError('Selected product not found.');
-      return;
-    }
-    const batches = itemDetails.batches;
-    if (batches.length === 0 || !batches.every((b) => b.batch_no && b.product_quantity > 0 && b.manufacture_date && b.expire_date)) {
-      setError('Please fill in all batch details correctly.');
-      return;
-    }
-    setCart((prevCart) => [...prevCart, { product_id: selectedProductId, batches }]);
-    setSelectedProductId(null);
-    setItemDetails({ batches: [] });
-  };
 
-  const removeFromCart = (productId: number) => {
-    setCart(cart.filter((item) => item.product_id !== productId));
-  };
-
-  const addBatch = () => {
-    setItemDetails((prev) => ({
-      batches: [...prev.batches, { batch_no: '', product_quantity: 0, manufacture_date: '', expire_date: '' }],
+    const exportData = stockTakingItems.map(item => ({
+      'Product ID': item.product_id,
+      'Product Name': item.product_name,
+      'Batch Number': item.batch_no,
+      'Expected Quantity': item.expected_quantity,
+      'Actual Quantity': item.actual_quantity,
+      'Difference': item.difference,
+      'Unit Price (Tsh)': item.unit_price,
+      'Total Value (Tsh)': item.total_value,
+      'Status': item.status,
+      'Notes': item.notes
     }));
+
+    const worksheet = XLSX.utils.json_to_sheet(exportData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Stock Taking');
+
+    const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+    const data = new Blob([excelBuffer], { type: 'application/octet-stream' });
+
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(data);
+    link.download = `Stock_Taking_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    link.click();
   };
 
-  const filteredMedicines = medicines.filter((medicine) =>
-    medicine.name.toLowerCase().includes(productSearchTerm.toLowerCase()) ||
-    medicine.category.toLowerCase().includes(productSearchTerm.toLowerCase())
-  );
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'completed':
+        return theme.palette.success.main;
+      case 'discrepancy':
+        return theme.palette.error.main;
+      case 'pending':
+        return theme.palette.warning.main;
+      default:
+        return theme.palette.text.secondary;
+    }
+  };
 
-  const filteredStockTakings = stockTakings.filter((stock) =>
-    stock.products.some((product) =>
-      medicines.find((m) => m.id === product.product_id)?.name.toLowerCase().includes(searchTerm.toLowerCase())
-    ) || stock.created_by.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'completed':
+        return <CheckCircle style={{ color: theme.palette.success.main, width: 16, height: 16 }} />;
+      case 'discrepancy':
+        return <AlertCircle style={{ color: theme.palette.error.main, width: 16, height: 16 }} />;
+      case 'pending':
+        return <Package style={{ color: theme.palette.warning.main, width: 16, height: 16 }} />;
+      default:
+        return <Package style={{ color: theme.palette.text.secondary, width: 16, height: 16 }} />;
+    }
+  };
+
+  const calculateSummary = () => {
+    const total = stockTakingItems.length;
+    const completed = stockTakingItems.filter(item => item.status === 'completed').length;
+    const discrepancies = stockTakingItems.filter(item => item.status === 'discrepancy').length;
+    const pending = stockTakingItems.filter(item => item.status === 'pending').length;
+    const totalValue = stockTakingItems.reduce((sum, item) => sum + item.total_value, 0);
+    const totalDifference = stockTakingItems.reduce((sum, item) => sum + Math.abs(item.difference), 0);
+
+    return { total, completed, discrepancies, pending, totalValue, totalDifference };
+  };
+
+  const summary = calculateSummary();
 
   return (
-    <div className="stock-taking-container">
-      <h1>Stock Taking</h1>
-
-      {error && (
-        <div className="error-message">
-          {error}
-        </div>
-      )}
-
-      <div className="main-grid">
-        {/* Left Section - Upload */}
-        <div className="left-section">
-          <div className="card">
-            <h2>Upload Excel</h2>
-            <div className="form-group">
-              <label>Upload File</label>
-              <input
-                type="file"
-                accept=".xlsx, .xls"
-                onChange={handleUploadExcel}
-                className="text-input"
-                disabled={loading}
-              />
-            </div>
-            <p className="note">Columns: product_id, batch_no, product_quantity, manufacture_date, expire_date</p>
-          </div>
-        </div>
-
-        {/* Right Section - Select Item */}
-        <div className="right-section">
-          <div className="card">
-            <h2>Select Item</h2>
-            <div className="search-container">
-              <Search size={18} />
-              <input
-                type="text"
-                placeholder="Search"
-                value={productSearchTerm}
-                onChange={(e) => setProductSearchTerm(e.target.value)}
-                className="search-input"
-                disabled={loading}
-              />
-            </div>
-            <div className="scroll-container item-list">
-              {filteredMedicines.length === 0 ? (
-                <p>No medicines available</p>
-              ) : (
-                filteredMedicines.map((medicine) => (
-                  <div key={medicine.id} className="item-option">
-                    <input
-                      type="radio"
-                      id={`product-${medicine.id}`}
-                      name="product-selection"
-                      checked={selectedProductId === medicine.id}
-                      onChange={(e) => {
-                        const newId = e.target.checked ? medicine.id : null;
-                        console.log(`Radio changed: selectedProductId set to ${newId} (${medicine.name})`);
-                        setSelectedProductId(newId);
-                        setItemDetails({
-                          batches: newId !== null ? [{ batch_no: '', product_quantity: 0, manufacture_date: '', expire_date: '' }] : []
-                        });
-                      }}
-                      className="radio-input"
-                      disabled={loading}
-                    />
-                    <label htmlFor={`product-${medicine.id}`} className="item-label">{medicine.name}</label>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Bottom Section - Item Details */}
-      <div className="bottom-section">
-        <div className="card item-details">
-          <h2>Item Details</h2>
-          {selectedProductId !== null ? (
-            <div className="item-detail-form">
-              <div className="form-grid">
-                <div className="form-group">
-                  <label>Selected Item *</label>
-                  <input
-                    type="text"
-                    value={medicines.find((p) => p.id === selectedProductId)?.name || 'Unknown'}
-                    readOnly
-                    className="read-only text-input"
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Unit of Measure</label>
-                  <input
-                    type="text"
-                    value={medicines.find((p) => p.id === selectedProductId)?.product_unit || ''}
-                    readOnly
-                    className="read-only text-input"
-                  />
-                </div>
-                {itemDetails.batches.map((batch, batchIndex) => (
-                  <React.Fragment key={batchIndex}>
-                    <div className="form-group required">
-                      <label>Batch Number *</label>
-                      <input
-                        type="text"
-                        value={batch.batch_no}
-                        onChange={(e) =>
-                          setItemDetails((prev) => ({
-                            batches: prev.batches.map((b, i) =>
-                              i === batchIndex ? { ...b, batch_no: e.target.value } : b
-                            ),
-                          }))
-                        }
-                        className="text-input"
-                        disabled={loading}
-                      />
-                    </div>
-                    <div className="form-group required">
-                      <label>Quantity *</label>
-                      <input
-                        type="number"
-                        min="1"
-                        value={batch.product_quantity}
-                        onChange={(e) =>
-                          setItemDetails((prev) => ({
-                            batches: prev.batches.map((b, i) =>
-                              i === batchIndex ? { ...b, product_quantity: parseInt(e.target.value) || 0 } : b
-                            ),
-                          }))
-                        }
-                        className="number-input"
-                        disabled={loading}
-                      />
-                    </div>
-                    <div className="form-group required">
-                      <label>Manufacture Date *</label>
-                      <input
-                        type="date"
-                        value={batch.manufacture_date}
-                        onChange={(e) =>
-                          setItemDetails((prev) => ({
-                            batches: prev.batches.map((b, i) =>
-                              i === batchIndex ? { ...b, manufacture_date: e.target.value } : b
-                            ),
-                          }))
-                        }
-                        className="date-input"
-                        disabled={loading}
-                      />
-                    </div>
-                    <div className="form-group required">
-                      <label>Expiry Date *</label>
-                      <input
-                        type="date"
-                        value={batch.expire_date}
-                        onChange={(e) =>
-                          setItemDetails((prev) => ({
-                            batches: prev.batches.map((b, i) =>
-                              i === batchIndex ? { ...b, expire_date: e.target.value } : b
-                            ),
-                          }))
-                        }
-                        className="date-input"
-                        disabled={loading}
-                      />
-                    </div>
-                    {itemDetails.batches.length > 1 && (
-                      <button
-                        className="remove-btn"
-                        onClick={() =>
-                          setItemDetails((prev) => ({
-                            batches: prev.batches.filter((_, i) => i !== batchIndex),
-                          }))
-                        }
-                        disabled={loading}
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    )}
-                  </React.Fragment>
-                ))}
-              </div>
-              <button className="add-btn" onClick={addBatch} disabled={loading}>
-                <Plus size={14} /> Add Batch
-              </button>
-            </div>
-          ) : (
-            <p>No item selected</p>
-          )}
+    <div style={{
+      padding: '16px',
+      background: theme.palette.background.default,
+      minHeight: '100vh',
+      width: '100%',
+      maxWidth: '100vw',
+      boxSizing: 'border-box'
+    }}>
+      {/* Header */}
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 24
+      }}>
+        <h2 style={{
+          fontSize: 24,
+          fontWeight: 700,
+          color: theme.palette.text.primary
+        }}>
+          Stock Taking
+        </h2>
+        <div style={{ display: 'flex', gap: 12 }}>
           <button
-            className="add-btn"
-            onClick={addToCart}
-            disabled={loading || selectedProductId === null}
+            onClick={initializeStockTaking}
+            style={{
+              padding: '8px 16px',
+              background: theme.palette.primary.main,
+              color: theme.palette.primary.contrastText,
+              border: 'none',
+              borderRadius: 8,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8
+            }}
           >
-            <Plus size={14} /> Add Item
+            <RefreshCw style={{ width: 16, height: 16 }} />
+            Refresh
+          </button>
+          <button
+            onClick={() => setIsAddModalOpen(true)}
+            style={{
+              padding: '8px 16px',
+              background: theme.palette.success.main,
+              color: theme.palette.success.contrastText,
+              border: 'none',
+              borderRadius: 8,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8
+            }}
+          >
+            <Plus style={{ width: 16, height: 16 }} />
+            Add Item
           </button>
         </div>
       </div>
 
-      {/* Bottom Section - Stock Taking History */}
-      <div className="bottom-section">
-        <div className="card">
-          <h2>Stock Taking History</h2>
-          <div className="search-container">
-            <Search size={18} />
-            <input
-              type="text"
-              placeholder="Search history..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="search-input"
-              disabled={loading}
-            />
+      {/* Success/Error Messages */}
+      {success && (
+        <div style={{
+          background: theme.palette.success.light,
+          border: `1px solid ${theme.palette.success.main}`,
+          color: theme.palette.success.dark,
+          padding: 12,
+          borderRadius: 8,
+          marginBottom: 16,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8
+        }}>
+          <CheckCircle style={{ width: 16, height: 16 }} />
+          {success}
+        </div>
+      )}
+
+      {error && (
+        <div style={{
+          background: theme.palette.error.light,
+          border: `1px solid ${theme.palette.error.main}`,
+          color: theme.palette.error.dark,
+          padding: 12,
+          borderRadius: 8,
+          marginBottom: 16,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8
+        }}>
+          <AlertCircle style={{ width: 16, height: 16 }} />
+          {error}
+        </div>
+      )}
+
+      {/* Summary Cards */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+        gap: 16,
+        marginBottom: 24
+      }}>
+        <div style={{
+          background: theme.palette.background.paper,
+          padding: 20,
+          borderRadius: 12,
+          boxShadow: theme.shadows[1],
+          border: `1px solid ${theme.palette.divider}`,
+          textAlign: 'center'
+        }}>
+          <Package style={{
+            width: 32,
+            height: 32,
+            color: theme.palette.primary.main,
+            marginBottom: 8
+          }} />
+          <p style={{
+            fontSize: 24,
+            fontWeight: 700,
+            color: theme.palette.text.primary,
+            margin: '8px 0 4px 0'
+          }}>
+            {summary.total}
+          </p>
+          <p style={{
+            fontSize: 14,
+            color: theme.palette.text.secondary,
+            margin: 0
+          }}>
+            Total Items
+          </p>
+        </div>
+
+        <div style={{
+          background: theme.palette.background.paper,
+          padding: 20,
+          borderRadius: 12,
+          boxShadow: theme.shadows[1],
+          border: `1px solid ${theme.palette.divider}`,
+          textAlign: 'center'
+        }}>
+          <CheckCircle style={{
+            width: 32,
+            height: 32,
+            color: theme.palette.success.main,
+            marginBottom: 8
+          }} />
+          <p style={{
+            fontSize: 24,
+            fontWeight: 700,
+            color: theme.palette.text.primary,
+            margin: '8px 0 4px 0'
+          }}>
+            {summary.completed}
+          </p>
+          <p style={{
+            fontSize: 14,
+            color: theme.palette.text.secondary,
+            margin: 0
+          }}>
+            Completed
+          </p>
+        </div>
+
+        <div style={{
+          background: theme.palette.background.paper,
+          padding: 20,
+          borderRadius: 12,
+          boxShadow: theme.shadows[1],
+          border: `1px solid ${theme.palette.divider}`,
+          textAlign: 'center'
+        }}>
+          <AlertCircle style={{
+            width: 32,
+            height: 32,
+            color: theme.palette.error.main,
+            marginBottom: 8
+          }} />
+          <p style={{
+            fontSize: 24,
+            fontWeight: 700,
+            color: theme.palette.text.primary,
+            margin: '8px 0 4px 0'
+          }}>
+            {summary.discrepancies}
+          </p>
+          <p style={{
+            fontSize: 14,
+            color: theme.palette.text.secondary,
+            margin: 0
+          }}>
+            Discrepancies
+          </p>
+        </div>
+
+        <div style={{
+          background: theme.palette.background.paper,
+          padding: 20,
+          borderRadius: 12,
+          boxShadow: theme.shadows[1],
+          border: `1px solid ${theme.palette.divider}`,
+          textAlign: 'center'
+        }}>
+          <Calculator style={{
+            width: 32,
+            height: 32,
+            color: theme.palette.warning.main,
+            marginBottom: 8
+          }} />
+          <p style={{
+            fontSize: 24,
+            fontWeight: 700,
+            color: theme.palette.text.primary,
+            margin: '8px 0 4px 0'
+          }}>
+            Tsh {summary.totalValue.toLocaleString()}
+          </p>
+          <p style={{
+            fontSize: 14,
+            color: theme.palette.text.secondary,
+            margin: 0
+          }}>
+            Total Value
+          </p>
+        </div>
+      </div>
+
+      {/* Filters and Actions */}
+      <div style={{
+        background: theme.palette.background.paper,
+        padding: 24,
+        borderRadius: 16,
+        boxShadow: theme.shadows[1],
+        marginBottom: 24,
+        border: `1px solid ${theme.palette.divider}`
+      }}>
+        <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+          {/* Search */}
+          <div style={{ flex: 1, minWidth: 200 }}>
+            <div style={{ position: 'relative' }}>
+              <Search style={{
+                position: 'absolute',
+                left: 12,
+                top: '50%',
+                transform: 'translateY(-50%)',
+                color: theme.palette.text.secondary,
+                width: 16,
+                height: 16
+              }} />
+              <input
+                type="text"
+                placeholder="Search items..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '12px 12px 12px 40px',
+                  border: `1px solid ${theme.palette.divider}`,
+                  borderRadius: 8,
+                  background: theme.palette.background.default,
+                  color: theme.palette.text.primary,
+                  fontSize: 14
+                }}
+              />
+            </div>
           </div>
-          <div className="table-container">
-            <table>
-              <thead>
-                <tr>
-                  <th>S/N</th>
-                  <th>ID</th>
-                  <th>Product</th>
-                  <th>Batch Number</th>
-                  <th>Quantity</th>
-                  <th>Manufacture Date</th>
-                  <th>Expiry Date</th>
-                  <th>Created By</th>
-                  <th>Created At</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {cart.length === 0 && filteredStockTakings.length === 0 ? (
-                  <tr>
-                    <td colSpan={9}>No items added</td>
-                  </tr>
-                ) : (
-                    <>
-                    {cart.map((item, index) =>
-                      item.batches.map((batch, batchIndex) => (
-                      <tr key={`${item.product_id}-${batchIndex}`}>
-                        <td>{index + batchIndex + 1}</td>
-                        <td>N/A</td>
-                        <td>{medicines.find((m) => m.id === item.product_id)?.name || 'Unknown'}</td>
-                        <td>{batch.batch_no}</td>
-                        <td>{batch.product_quantity}</td>
-                        <td>{batch.manufacture_date}</td>
-                        <td>{batch.expire_date}</td>
-                        <td>{localStorage.getItem('username') || 'Admin'}</td>
-                        <td>{new Date().toLocaleString()}</td>
-                        <td>
-                        <button
-                          className="remove-btn"
-                          onClick={() => removeFromCart(item.product_id)}
-                          disabled={loading}
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                        {index === cart.length - 1 && batchIndex === item.batches.length - 1 && (
-                          <button className="save-btn" onClick={handleAddStockTaking} disabled={loading}>
-                          <Save size={16} /> Save
-                          </button>
-                        )}
-                        </td>
-                      </tr>
-                      ))
-                    )}
-                    {filteredStockTakings.map((stock, stockIndex) =>
-                      stock.products.map((product) =>
-                      product.batches.map((batch, batchIndex) => {
-                        const cartItemsCount = cart.reduce((sum, item) => sum + item.batches.length, 0);
-                        const currentIndex = stockIndex + batchIndex + cartItemsCount + 1;
-                        return (
-                        <tr key={`${stock.id}-${product.product_id}-${batchIndex}`}>
-                          <td>{currentIndex}</td>
-                          <td>{stock.id}</td>
-                          <td>{medicines.find((m) => m.id === product.product_id)?.name || 'Unknown'}</td>
-                          <td>{batch.batch_no}</td>
-                          <td>{batch.product_quantity}</td>
-                          <td>{batch.manufacture_date}</td>
-                          <td>{batch.expire_date}</td>
-                          <td>{stock.created_by}</td>
-                          <td>{new Date(stock.created_at).toLocaleString()}</td>
-                          <td></td>
-                        </tr>
-                        );
-                      })
-                      )
-                    )}
-                    </>
-                )}
-              </tbody>
-            </table>
+
+          {/* Status Filter */}
+          <div style={{ minWidth: 150 }}>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '12px',
+                border: `1px solid ${theme.palette.divider}`,
+                borderRadius: 8,
+                background: theme.palette.background.default,
+                color: theme.palette.text.primary,
+                fontSize: 14
+              }}
+            >
+              <option value="">All Status</option>
+              <option value="pending">Pending</option>
+              <option value="completed">Completed</option>
+              <option value="discrepancy">Discrepancy</option>
+            </select>
+          </div>
+
+          {/* Category Filter */}
+          <div style={{ minWidth: 150 }}>
+            <select
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '12px',
+                border: `1px solid ${theme.palette.divider}`,
+                borderRadius: 8,
+                background: theme.palette.background.default,
+                color: theme.palette.text.primary,
+                fontSize: 14
+              }}
+            >
+              <option value="">All Categories</option>
+              {Array.from(new Set(medicines.map(m => m.product_category))).map(category => (
+                <option key={category} value={category}>{category}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Action Buttons */}
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              onClick={handleExportStockTaking}
+              disabled={stockTakingItems.length === 0}
+              style={{
+                padding: '8px 16px',
+                background: theme.palette.info.main,
+                color: theme.palette.info.contrastText,
+                border: 'none',
+                borderRadius: 8,
+                cursor: stockTakingItems.length === 0 ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                opacity: stockTakingItems.length === 0 ? 0.7 : 1
+              }}
+            >
+              <Download style={{ width: 16, height: 16 }} />
+              Export
+            </button>
+            <button
+              onClick={handleSaveStockTaking}
+              disabled={loading || stockTakingItems.length === 0}
+              style={{
+                padding: '8px 16px',
+                background: theme.palette.success.main,
+                color: theme.palette.success.contrastText,
+                border: 'none',
+                borderRadius: 8,
+                cursor: (loading || stockTakingItems.length === 0) ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                opacity: (loading || stockTakingItems.length === 0) ? 0.7 : 1
+              }}
+            >
+              <Save style={{ width: 16, height: 16 }} />
+              {loading ? 'Saving...' : 'Save All'}
+            </button>
           </div>
         </div>
       </div>
 
-      <style jsx>{`
-        .stock-taking-container {
-          max-width: 100%;
-          margin: 0;
-          padding: 0;
-          font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-          background: #f5f6fa;
-          border-top: 5px solid #e67e22;
-        }
-        h1 {
-          color: #2c3e50;
-          text-align: center;
-          margin: 10px 0;
-          font-size: 1.8em;
-          padding: 10px 0;
-          background: #fff;
-        }
-        .error-message {
-          background: #ffebee;
-          color: #c62828;
-          padding: 10px;
-          margin: 10px 20px;
-          border-radius: 4px;
-          text-align: center;
-        }
-        .main-grid {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 20px;
-          margin: 0 20px 20px 20px;
-          padding: 0;
-        }
-        .card {
-          background: #fff;
-          border-radius: 8px;
-          box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-          padding: 15px;
-          margin: 0;
-        }
-        h2 {
-          color: #34495e;
-          margin: 0 0 15px 0;
-          font-size: 1.3em;
-          border-bottom: 1px solid #ecf0f1;
-          padding-bottom: 10px;
-        }
-        .form-group {
-          margin: 10px 0;
-        }
-        .form-group label {
-          display: block;
-          margin: 5px 0;
-          color: #34495e;
-          font-weight: 500;
-        }
-        .text-input, .number-input, .date-input {
-          width: 100%;
-          padding: 8px;
-          border: 1px solid #ddd;
-          border-radius: 4px;
-          box-sizing: border-box;
-          font-size: 0.95em;
-          transition: border-color 0.3s;
-        }
-        .text-input:focus, .number-input:focus, .date-input:focus {
-          border-color: #3498db;
-          outline: none;
-        }
-        .required label:after {
-          content: ' *';
-          color: #e74c3c;
-        }
-        .read-only {
-          background: #f9f9f9;
-          color: #7f8c8d;
-        }
-        .search-container {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          margin: 10px 0;
-          padding: 8px;
-          background: #f1f2f6;
-          border-radius: 4px;
-        }
-        .search-input {
-          border: none;
-          background: transparent;
-          width: 100%;
-          font-size: 0.95em;
-        }
-        .search-input:focus {
-          outline: none;
-        }
-        .scroll-container {
-          max-height: 300px;
-          overflow-y: auto;
-          padding: 0;
-        }
-        .item-list {
-          display: flex;
-          flex-direction: column;
-        }
-        .item-option {
-          display: flex;
-          align-items: center;
-          padding: 8px 0;
-          border-bottom: 1px solid #eee;
-        }
-        .radio-input {
-          margin: 0 8px 0 0;
-          transform: scale(0.9);
-        }
-        .item-label {
-          flex: 1;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          font-size: 0.95em;
-          color: #2c3e50;
-        }
-        .item-detail-form {
-          margin-bottom: 20px;
-          border: 1px solid #eee;
-          padding: 10px;
-          border-radius: 4px;
-        }
-        .form-grid {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 15px;
-          margin: 10px 0;
-        }
-        .add-btn {
-          width: auto;
-          background: #3498db;
-          padding: 6px 12px;
-          color: white;
-          border: none;
-          border-radius: 4px;
-          cursor: pointer;
-          font-size: 0.9em;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 5px;
-        }
-        .add-btn:disabled {
-          background: #bdc3c7;
-          cursor: not-allowed;
-        }
-        .add-btn:hover:not(:disabled) {
-          background: #2980b9;
-        }
-        .table-container {
-          overflow-x: auto;
-          margin-top: 10px;
-        }
-        table {
-          width: 100%;
-          border-collapse: collapse;
-          font-size: 0.95em;
-        }
-        th, td {
-          padding: 10px;
-          text-align: left;
-          border-bottom: 1px solid #ddd;
-        }
-        th {
-          background: #f1f2f6;
-          color: #34495e;
-          font-weight: 600;
-        }
-        td {
-          color: #2c3e50;
-        }
-        .remove-btn {
-          background: #e74c3c;
-          color: white;
-          border: none;
-          border-radius: 4px;
-          padding: 4px;
-          cursor: pointer;
-          font-size: 0.9em;
-          margin-right: 5px;
-        }
-        .remove-btn:hover {
-          background: #c0392b;
-        }
-        .save-btn {
-          background: #2ecc71;
-          color: white;
-          border: none;
-          border-radius: 4px;
-          padding: 4px;
-          cursor: pointer;
-          font-size: 0.9em;
-        }
-        .save-btn:hover {
-          background: #27ae60;
-        }
-        .note {
-          font-size: 0.85em;
-          color: #7f8c8d;
-          margin-top: 5px;
-        }
-        @media (max-width: 768px) {
-          .main-grid {
-            grid-template-columns: 1fr;
-          }
-          .form-grid {
-            grid-template-columns: 1fr;
-          }
-          .add-btn {
-            width: 100%;
-            margin-top: 10px;
-          }
-        }
-      `}</style>
+      {/* Stock Taking Table */}
+      <div style={{
+        background: theme.palette.background.paper,
+        borderRadius: 16,
+        boxShadow: theme.shadows[1],
+        border: `1px solid ${theme.palette.divider}`,
+        overflow: 'hidden'
+      }}>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{
+            width: '100%',
+            borderCollapse: 'collapse',
+            minWidth: 1200
+          }}>
+            <thead>
+              <tr style={{
+                background: theme.palette.primary.main,
+                color: theme.palette.primary.contrastText
+              }}>
+                <th style={{ padding: '16px', textAlign: 'left', fontWeight: 600 }}>Product</th>
+                <th style={{ padding: '16px', textAlign: 'left', fontWeight: 600 }}>Batch</th>
+                <th style={{ padding: '16px', textAlign: 'center', fontWeight: 600 }}>Expected</th>
+                <th style={{ padding: '16px', textAlign: 'center', fontWeight: 600 }}>Actual</th>
+                <th style={{ padding: '16px', textAlign: 'center', fontWeight: 600 }}>Difference</th>
+                <th style={{ padding: '16px', textAlign: 'right', fontWeight: 600 }}>Unit Price</th>
+                <th style={{ padding: '16px', textAlign: 'right', fontWeight: 600 }}>Total Value</th>
+                <th style={{ padding: '16px', textAlign: 'center', fontWeight: 600 }}>Status</th>
+                <th style={{ padding: '16px', textAlign: 'center', fontWeight: 600 }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredItems.length === 0 ? (
+                <tr>
+                  <td colSpan={9} style={{
+                    padding: '40px',
+                    textAlign: 'center',
+                    color: theme.palette.text.secondary
+                  }}>
+                    <Package style={{
+                      width: 24,
+                      height: 24,
+                      marginBottom: 8
+                    }} />
+                    <p>No stock taking items found</p>
+                  </td>
+                </tr>
+              ) : (
+                filteredItems.map((item) => (
+                  <tr key={item.id} style={{
+                    borderBottom: `1px solid ${theme.palette.divider}`
+                  }}>
+                    <td style={{ padding: '16px' }}>
+                      <div>
+                        <div style={{
+                          color: theme.palette.text.primary,
+                          fontWeight: 500
+                        }}>
+                          {item.product_name}
+                        </div>
+                        <div style={{
+                          fontSize: 12,
+                          color: theme.palette.text.secondary
+                        }}>
+                          ID: {item.product_id}
+                        </div>
+                      </div>
+                    </td>
+                    <td style={{ padding: '16px', color: theme.palette.text.primary }}>
+                      {item.batch_no}
+                    </td>
+                    <td style={{
+                      padding: '16px',
+                      textAlign: 'center',
+                      color: theme.palette.text.primary,
+                      fontWeight: 500
+                    }}>
+                      {item.expected_quantity}
+                    </td>
+                    <td style={{
+                      padding: '16px',
+                      textAlign: 'center',
+                      color: theme.palette.text.primary,
+                      fontWeight: 500
+                    }}>
+                      {item.actual_quantity}
+                    </td>
+                    <td style={{
+                      padding: '16px',
+                      textAlign: 'center',
+                      color: item.difference === 0 ? theme.palette.success.main : theme.palette.error.main,
+                      fontWeight: 600
+                    }}>
+                      {item.difference > 0 ? '+' : ''}{item.difference}
+                    </td>
+                    <td style={{
+                      padding: '16px',
+                      textAlign: 'right',
+                      color: theme.palette.text.primary
+                    }}>
+                      Tsh {item.unit_price.toLocaleString()}
+                    </td>
+                    <td style={{
+                      padding: '16px',
+                      textAlign: 'right',
+                      color: theme.palette.text.primary,
+                      fontWeight: 500
+                    }}>
+                      Tsh {item.total_value.toLocaleString()}
+                    </td>
+                    <td style={{ padding: '16px', textAlign: 'center' }}>
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        justifyContent: 'center'
+                      }}>
+                        {getStatusIcon(item.status)}
+                        <span style={{
+                          color: getStatusColor(item.status),
+                          fontWeight: 500,
+                          textTransform: 'capitalize'
+                        }}>
+                          {item.status}
+                        </span>
+                      </div>
+                    </td>
+                    <td style={{ padding: '16px', textAlign: 'center' }}>
+                      <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+                        <button
+                          onClick={() => handleEditItem(item)}
+                          style={{
+                            padding: '6px',
+                            background: theme.palette.primary.main,
+                            color: theme.palette.primary.contrastText,
+                            border: 'none',
+                            borderRadius: 4,
+                            cursor: 'pointer'
+                          }}
+                          title="Edit"
+                        >
+                          <Edit style={{ width: 14, height: 14 }} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Add Item Modal */}
+      {isAddModalOpen && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{
+            background: theme.palette.background.paper,
+            borderRadius: 16,
+            padding: 24,
+            width: '90%',
+            maxWidth: 600,
+            maxHeight: '90vh',
+            overflowY: 'auto'
+          }}>
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: 24
+            }}>
+              <h3 style={{
+                fontSize: 20,
+                fontWeight: 600,
+                color: theme.palette.text.primary,
+                margin: 0
+              }}>
+                Add Stock Taking Item
+              </h3>
+              <button
+                onClick={() => setIsAddModalOpen(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: theme.palette.text.secondary
+                }}
+              >
+                <XCircle style={{ width: 24, height: 24 }} />
+              </button>
+            </div>
+
+            <div style={{ display: 'grid', gap: 16 }}>
+              {/* Product Selection */}
+              <div>
+                <label style={{
+                  display: 'block',
+                  marginBottom: 8,
+                  fontWeight: 500,
+                  color: theme.palette.text.primary
+                }}>
+                  Product *
+                </label>
+                <select
+                  value={newItem.product_id}
+                  onChange={(e) => setNewItem(prev => ({ ...prev, product_id: e.target.value }))}
+                  style={{
+                    width: '100%',
+                    padding: '12px',
+                    border: `1px solid ${theme.palette.divider}`,
+                    borderRadius: 8,
+                    background: theme.palette.background.default,
+                    color: theme.palette.text.primary,
+                    fontSize: 14
+                  }}
+                >
+                  <option value="">Select a product</option>
+                  {medicines.map(medicine => (
+                    <option key={medicine.id} value={medicine.product_id}>
+                      {medicine.product_name} (Expected: {medicine.current_quantity})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Batch Number */}
+              <div>
+                <label style={{
+                  display: 'block',
+                  marginBottom: 8,
+                  fontWeight: 500,
+                  color: theme.palette.text.primary
+                }}>
+                  Batch Number
+                </label>
+                <input
+                  type="text"
+                  value={newItem.batch_no}
+                  onChange={(e) => setNewItem(prev => ({ ...prev, batch_no: e.target.value }))}
+                  placeholder="Enter batch number"
+                  style={{
+                    width: '100%',
+                    padding: '12px',
+                    border: `1px solid ${theme.palette.divider}`,
+                    borderRadius: 8,
+                    background: theme.palette.background.default,
+                    color: theme.palette.text.primary,
+                    fontSize: 14
+                  }}
+                />
+              </div>
+
+              {/* Actual Quantity */}
+              <div>
+                <label style={{
+                  display: 'block',
+                  marginBottom: 8,
+                  fontWeight: 500,
+                  color: theme.palette.text.primary
+                }}>
+                  Actual Quantity *
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  value={newItem.actual_quantity}
+                  onChange={(e) => setNewItem(prev => ({
+                    ...prev,
+                    actual_quantity: parseInt(e.target.value) || 0
+                  }))}
+                  placeholder="Enter actual quantity counted"
+                  style={{
+                    width: '100%',
+                    padding: '12px',
+                    border: `1px solid ${theme.palette.divider}`,
+                    borderRadius: 8,
+                    background: theme.palette.background.default,
+                    color: theme.palette.text.primary,
+                    fontSize: 14
+                  }}
+                />
+              </div>
+
+              {/* Notes */}
+              <div>
+                <label style={{
+                  display: 'block',
+                  marginBottom: 8,
+                  fontWeight: 500,
+                  color: theme.palette.text.primary
+                }}>
+                  Notes
+                </label>
+                <textarea
+                  value={newItem.notes}
+                  onChange={(e) => setNewItem(prev => ({ ...prev, notes: e.target.value }))}
+                  placeholder="Enter any notes about the stock taking"
+                  rows={3}
+                  style={{
+                    width: '100%',
+                    padding: '12px',
+                    border: `1px solid ${theme.palette.divider}`,
+                    borderRadius: 8,
+                    background: theme.palette.background.default,
+                    color: theme.palette.text.primary,
+                    fontSize: 14,
+                    resize: 'vertical'
+                  }}
+                />
+              </div>
+
+              {/* Action Buttons */}
+              <div style={{
+                display: 'flex',
+                gap: 12,
+                justifyContent: 'flex-end',
+                marginTop: 24,
+                paddingTop: 16,
+                borderTop: `1px solid ${theme.palette.divider}`
+              }}>
+                <button
+                  onClick={() => setIsAddModalOpen(false)}
+                  style={{
+                    padding: '12px 24px',
+                    background: theme.palette.grey[300],
+                    color: theme.palette.text.primary,
+                    border: 'none',
+                    borderRadius: 8,
+                    cursor: 'pointer'
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleAddItem}
+                  style={{
+                    padding: '12px 24px',
+                    background: theme.palette.primary.main,
+                    color: theme.palette.primary.contrastText,
+                    border: 'none',
+                    borderRadius: 8,
+                    cursor: 'pointer'
+                  }}
+                >
+                  Add Item
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Item Modal */}
+      {isEditModalOpen && selectedItem && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{
+            background: theme.palette.background.paper,
+            borderRadius: 16,
+            padding: 24,
+            width: '90%',
+            maxWidth: 600,
+            maxHeight: '90vh',
+            overflowY: 'auto'
+          }}>
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: 24
+            }}>
+              <h3 style={{
+                fontSize: 20,
+                fontWeight: 600,
+                color: theme.palette.text.primary,
+                margin: 0
+              }}>
+                Edit Stock Taking Item
+              </h3>
+              <button
+                onClick={() => {
+                  setIsEditModalOpen(false);
+                  setSelectedItem(null);
+                }}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: theme.palette.text.secondary
+                }}
+              >
+                <XCircle style={{ width: 24, height: 24 }} />
+              </button>
+            </div>
+
+            <div style={{ display: 'grid', gap: 16 }}>
+              {/* Product Info */}
+              <div>
+                <label style={{
+                  display: 'block',
+                  marginBottom: 8,
+                  fontWeight: 500,
+                  color: theme.palette.text.primary
+                }}>
+                  Product
+                </label>
+                <input
+                  type="text"
+                  value={selectedItem.product_name}
+                  disabled
+                  style={{
+                    width: '100%',
+                    padding: '12px',
+                    border: `1px solid ${theme.palette.divider}`,
+                    borderRadius: 8,
+                    background: theme.palette.grey[100],
+                    color: theme.palette.text.secondary,
+                    fontSize: 14
+                  }}
+                />
+              </div>
+
+              {/* Expected vs Actual */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                <div>
+                  <label style={{
+                    display: 'block',
+                    marginBottom: 8,
+                    fontWeight: 500,
+                    color: theme.palette.text.primary
+                  }}>
+                    Expected Quantity
+                  </label>
+                  <input
+                    type="number"
+                    value={selectedItem.expected_quantity}
+                    disabled
+                    style={{
+                      width: '100%',
+                      padding: '12px',
+                      border: `1px solid ${theme.palette.divider}`,
+                      borderRadius: 8,
+                      background: theme.palette.grey[100],
+                      color: theme.palette.text.secondary,
+                      fontSize: 14
+                    }}
+                  />
+                </div>
+                <div>
+                  <label style={{
+                    display: 'block',
+                    marginBottom: 8,
+                    fontWeight: 500,
+                    color: theme.palette.text.primary
+                  }}>
+                    Actual Quantity *
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={selectedItem.actual_quantity}
+                    onChange={(e) => {
+                      const actualQty = parseInt(e.target.value) || 0;
+                      const difference = actualQty - selectedItem.expected_quantity;
+                      const status = actualQty === selectedItem.expected_quantity ? 'completed' : 'discrepancy';
+
+                      setSelectedItem(prev => prev ? {
+                        ...prev,
+                        actual_quantity: actualQty,
+                        difference,
+                        total_value: actualQty * prev.unit_price,
+                        status
+                      } : null);
+                    }}
+                    style={{
+                      width: '100%',
+                      padding: '12px',
+                      border: `1px solid ${theme.palette.divider}`,
+                      borderRadius: 8,
+                      background: theme.palette.background.default,
+                      color: theme.palette.text.primary,
+                      fontSize: 14
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Difference Display */}
+              <div>
+                <label style={{
+                  display: 'block',
+                  marginBottom: 8,
+                  fontWeight: 500,
+                  color: theme.palette.text.primary
+                }}>
+                  Difference
+                </label>
+                <input
+                  type="text"
+                  value={`${selectedItem.difference > 0 ? '+' : ''}${selectedItem.difference}`}
+                  disabled
+                  style={{
+                    width: '100%',
+                    padding: '12px',
+                    border: `1px solid ${theme.palette.divider}`,
+                    borderRadius: 8,
+                    background: theme.palette.grey[100],
+                    color: selectedItem.difference === 0 ? theme.palette.success.main : theme.palette.error.main,
+                    fontSize: 14,
+                    fontWeight: 600
+                  }}
+                />
+              </div>
+
+              {/* Notes */}
+              <div>
+                <label style={{
+                  display: 'block',
+                  marginBottom: 8,
+                  fontWeight: 500,
+                  color: theme.palette.text.primary
+                }}>
+                  Notes
+                </label>
+                <textarea
+                  value={selectedItem.notes}
+                  onChange={(e) => setSelectedItem(prev => prev ? { ...prev, notes: e.target.value } : null)}
+                  placeholder="Enter any notes about the stock taking"
+                  rows={3}
+                  style={{
+                    width: '100%',
+                    padding: '12px',
+                    border: `1px solid ${theme.palette.divider}`,
+                    borderRadius: 8,
+                    background: theme.palette.background.default,
+                    color: theme.palette.text.primary,
+                    fontSize: 14,
+                    resize: 'vertical'
+                  }}
+                />
+              </div>
+
+              {/* Action Buttons */}
+              <div style={{
+                display: 'flex',
+                gap: 12,
+                justifyContent: 'flex-end',
+                marginTop: 24,
+                paddingTop: 16,
+                borderTop: `1px solid ${theme.palette.divider}`
+              }}>
+                <button
+                  onClick={() => {
+                    setIsEditModalOpen(false);
+                    setSelectedItem(null);
+                  }}
+                  style={{
+                    padding: '12px 24px',
+                    background: theme.palette.grey[300],
+                    color: theme.palette.text.primary,
+                    border: 'none',
+                    borderRadius: 8,
+                    cursor: 'pointer'
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => handleUpdateItem(selectedItem)}
+                  style={{
+                    padding: '12px 24px',
+                    background: theme.palette.primary.main,
+                    color: theme.palette.primary.contrastText,
+                    border: 'none',
+                    borderRadius: 8,
+                    cursor: 'pointer'
+                  }}
+                >
+                  Update Item
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

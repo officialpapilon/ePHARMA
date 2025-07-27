@@ -1,9 +1,41 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Download } from 'lucide-react';
+import { 
+  Download, 
+  Search, 
+  Filter, 
+  AlertCircle, 
+  X, 
+  ChevronLeft, 
+  ChevronRight,
+  RefreshCw,
+  FileSpreadsheet,
+  BarChart3,
+  TrendingUp,
+  TrendingDown,
+  Package,
+  Calendar,
+  User,
+  Eye
+} from 'lucide-react';
+import { useTheme } from '@mui/material';
+import { Bar, Doughnut } from 'react-chartjs-2';
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  ArcElement,
+  Title,
+  Tooltip,
+  Legend,
+} from 'chart.js';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { API_BASE_URL } from '../../../constants';
+import DataTable from '../../components/common/DataTable/DataTable';
+import { TableColumn } from '../../components/common/DataTable/DataTable';
+import LoadingSpinner from '../../components/common/LoadingSpinner/LoadingSpinner';
 
 interface Batch {
   batch_no: string;
@@ -76,8 +108,16 @@ const StockTakingReport = () => {
         }
         throw new Error(`HTTP ${response.status}: ${text || 'Unknown error'}`);
       }
-      const data = JSON.parse(text);
-      if (!Array.isArray(data)) throw new Error('Expected an array of medicines');
+      const result = JSON.parse(text);
+      
+      // Handle new API response structure
+      const data = result.success && result.data ? result.data : result;
+      
+      if (!Array.isArray(data)) {
+        console.error('Unexpected API response structure:', result);
+        throw new Error('Expected an array of medicines');
+      }
+      
       const mappedMedicines = data.map((item: any) => ({
         id: item.id || item.product_id,
         name: item.product_name || 'Unknown Medicine',
@@ -203,6 +243,27 @@ const StockTakingReport = () => {
     })
   );
 
+  const theme = useTheme();
+
+  if (loading && medicines.length === 0) {
+    return (
+      <div style={{ 
+        padding: '16px', 
+        background: theme.palette.background.default, 
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center'
+      }}>
+        <LoadingSpinner 
+          loading={true} 
+          message="Loading stock taking report..." 
+          size={48}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="stock-taking-report-container">
       <h1>Stock Taking Report</h1>
@@ -284,7 +345,7 @@ const StockTakingReport = () => {
 
       <div className="report-section">
         {loading ? (
-          <div className="loading">Loading...</div>
+          <LoadingSpinner />
         ) : filteredStockTakings.length === 0 ? (
           <div className="no-data">No stock taking records found</div>
         ) : (

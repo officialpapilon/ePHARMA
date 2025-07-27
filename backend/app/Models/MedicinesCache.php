@@ -15,6 +15,7 @@ class MedicinesCache extends Model
         'batch_no',
         'product_name',
         'product_price',
+        'buying_price',
         'product_category',
         'expire_date',
         'current_quantity',

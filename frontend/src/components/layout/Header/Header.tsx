@@ -57,7 +57,6 @@ const Header: React.FC<HeaderProps> = ({
   // Remove branches state and useEffect
 
   // Get branch info from localStorage (set at login)
-  const branchId = localStorage.getItem('branch_id');
   const branchName = localStorage.getItem('branch_name');
 
   useEffect(() => {

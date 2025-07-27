@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { Search, Edit, Save, X, PlusIcon, FileSpreadsheet } from 'lucide-react';
+import { Search, Edit, Save, X, PlusIcon, FileSpreadsheet, RefreshCw } from 'lucide-react';
 import Button from '../../components/UI/Button/Button';
 import AddMedicineModal from '../../components/Stock-Manager/AddMedicine';
 import { API_BASE_URL } from '../../../constants';
 import axios from 'axios';
 import UploadExcelDataProvider from '../../components/Stock-Manager/FromExcel';
+import LoadingSpinner from '../../components/common/LoadingSpinner/LoadingSpinner';
 
 interface Medicine {
   id: string;
@@ -21,6 +22,7 @@ const StockManager = () => {
   const [isAddMedicineModalOpen, setIsAddMedicineModalOpen] = useState(false); 
   const [isUploadExcelModalOpen, setIsUploadExcelModalOpen] = useState(false); 
   const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
 
   // Mock data
   const [medicines, setMedicines] = useState<Medicine[]>([]);
@@ -67,6 +69,7 @@ const StockManager = () => {
   };
 
   const loadData = async () => {
+    setIsLoading(true);
     try {
       const response = await axios.get(`${API_BASE_URL}api/medicines`, {
         headers: {
@@ -76,8 +79,16 @@ const StockManager = () => {
         }
       });
 
-      if (response) {
-        setMedicines(response.data);
+      if (response.data) {
+        // Handle new API response structure
+        const data = response.data.success && response.data.data ? response.data.data : response.data;
+        
+        if (Array.isArray(data)) {
+          setMedicines(data);
+        } else {
+          console.error('Unexpected API response structure:', response.data);
+          setError('Invalid data format received from server');
+        }
       }
     } catch (err) {
       if (axios.isAxiosError(err)) {
@@ -85,6 +96,8 @@ const StockManager = () => {
       } else {
         setError('Failed to load medicines');
       }
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -97,6 +110,25 @@ const StockManager = () => {
 
   const openUploadExcelModal = () => setIsUploadExcelModalOpen(true); 
   const closeUploadExcelModal = () => setIsUploadExcelModalOpen(false); 
+
+  if (isLoading && medicines.length === 0) {
+    return (
+      <div style={{ 
+        padding: '16px', 
+        background: '#f5f5f5', 
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center'
+      }}>
+        <LoadingSpinner 
+          loading={true} 
+          message="Loading inventory..." 
+          size={48}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -172,7 +204,13 @@ const StockManager = () => {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {filteredMedicines.length > 0 ? (
+              {isLoading ? (
+                <tr>
+                  <td colSpan={7} className="px-6 py-4 text-center text-sm text-gray-500">
+                    <LoadingSpinner />
+                  </td>
+                </tr>
+              ) : filteredMedicines.length > 0 ? (
                 filteredMedicines.map((medicine) => (
                   <tr key={medicine.id}>
                     {editingId === medicine.id ? (

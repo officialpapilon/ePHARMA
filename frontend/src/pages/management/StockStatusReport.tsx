@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Download, Search, Filter } from 'lucide-react';
+import { Download, Search, Filter, AlertTriangle, RefreshCw, FileSpreadsheet, BarChart3, Package, Clock } from 'lucide-react';
 import { API_BASE_URL } from '../../../constants';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import * as XLSX from 'xlsx';
+import LoadingSpinner from '../../components/common/LoadingSpinner/LoadingSpinner';
 
 interface Medicine {
   product_id: string;
@@ -63,8 +64,16 @@ const StockStatusReport = () => {
         setMedicines([]);
         return;
       }
-      const rawData = JSON.parse(text);
-      if (!Array.isArray(rawData)) throw new Error('Expected an array of medicines.');
+      const result = JSON.parse(text);
+      
+      // Handle new API response structure
+      const rawData = result.success && result.data ? result.data : result;
+      console.log('Processed data:', rawData);
+      
+      if (!Array.isArray(rawData)) {
+        console.error('Unexpected API response structure:', result);
+        throw new Error('Expected an array of medicines.');
+      }
 
       const parsedData: Medicine[] = rawData.map((item: any) => ({
         product_id: String(item.product_id),
@@ -264,6 +273,25 @@ const StockStatusReport = () => {
     </section>
   );
 
+  if (loading && medicines.length === 0) {
+    return (
+      <div style={{ 
+        padding: '16px', 
+        background: '#f5f5f5', 
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center'
+      }}>
+        <LoadingSpinner 
+          loading={true} 
+          message="Loading stock status report..." 
+          size={48}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 p-6 bg-[#f5f7fa] min-h-screen">
       <div className="flex justify-between items-center">
@@ -305,7 +333,7 @@ const StockStatusReport = () => {
       </div>
 
       {/* Loading and Error States */}
-      {loading && <div className="text-center text-[#4a5568]">Loading stock data...</div>}
+      {loading && <LoadingSpinner />}
       {error && <div className="text-center text-red-700 bg-red-50 p-3 rounded-md">{error}</div>}
 
       {/* Sections */}

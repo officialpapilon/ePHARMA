@@ -1,104 +1,97 @@
 // src/services/storeService.ts
 import { StockAdjustment, StockTaking, StockReceiving, StoreReport } from '../types/store';
 import { Item } from '../types/item';
+import { API_BASE_URL } from '../constants';
 
-export const fetchInventory = async (): Promise<Item[]> => {
-  const response = await fetch('http://127.0.0.1:8000/api/store/inventory', {
+export const fetchInventory = async (filters = {}) => {
+  const queryParams = new URLSearchParams(filters).toString();
+  const response = await fetch(`${API_BASE_URL}/api/store/inventory`, {
+    method: 'GET',
     headers: {
-      'Accept': 'application/json',
-      'Authorization': `Bearer ${localStorage.getItem('token') || ''}`, // Ensure authentication token
+      'Content-Type': 'application/json',
     },
   });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error('API Error Response for inventory:', errorText);
-    throw new Error(`Failed to fetch inventory: ${errorText || response.statusText}`);
-  }
-
-  const data = await response.json();
-  console.log('API Response for inventory:', data);
-
-  if (data.status === 'success' && Array.isArray(data.data)) {
-    return data.data.map((item: any) => ({
-      id: item.id.toString(),
-      name: item.name || '',
-      code: item.code || '',
-      category: item.category || '',
-      price: item.price || '0.00',
-      created_at: item.created_at || '',
-      updated_at: item.updated_at || '',
-      description: item.description || null,
-      quantity: item.quantity || '0.00',
-      brand: item.brand || null,
-      unit: item.unit || null,
-      supplier: item.supplier || null,
-      manufacture_date: item.manufacture_date || null,
-      expire_date: item.expire_date || null,
-      batch_number: item.batch_number || null,
-    }));
-  }
-
-  console.warn('Unexpected API response format for inventory:', data);
-  throw new Error('Invalid API response format for inventory');
-};
-
-
-export const fetchSuppliers = async (): Promise<any[]> => {
-  const response = await fetch('http://127.0.0.1:8000/api/store/suppliers', {
-    headers: {
-      'Accept': 'application/json',
-      'Authorization': `Bearer ${localStorage.getItem('token') || ''}`, // Ensure authentication token
-    },
-  });
-  if (!response.ok) throw new Error('Failed to fetch suppliers');
   return response.json();
 };
 
-export const createStockAdjustment = async (adjustment: StockAdjustment): Promise<void> => {
-  const response = await fetch('http://127.0.0.1:8000/api/store/stock/adjustment', {
-    method: 'POST',
+export const updateInventory = async (id: number, data: any) => {
+  const response = await fetch(`${API_BASE_URL}/api/store/inventory/${id}`, {
+    method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
-      'Accept': 'application/json',
-      'Authorization': `Bearer ${localStorage.getItem('token') || ''}`, // Ensure authentication token
     },
-    body: JSON.stringify(adjustment),
+    body: JSON.stringify(data),
   });
-  if (!response.ok) throw new Error('Failed to adjust stock');
-};
-
-export const performStockTaking = async (): Promise<StockTaking[]> => {
-  const response = await fetch('http://127.0.0.1:8000/api/store/stock/taking', {
-    headers: {
-      'Accept': 'application/json',
-      'Authorization': `Bearer ${localStorage.getItem('token') || ''}`, // Ensure authentication token
-    },
-  });
-  if (!response.ok) throw new Error('Failed to perform stock taking');
   return response.json();
 };
 
-export const receiveStock = async (receiving: StockReceiving): Promise<void> => {
-  const response = await fetch('http://127.0.0.1:8000/api/store/stock/receiving', {
+export const deleteInventory = async (id: number) => {
+  const response = await fetch(`${API_BASE_URL}/api/store/inventory/${id}`, {
+    method: 'DELETE',
+  });
+  return response.json();
+};
+
+export const createInventory = async (data: any) => {
+  const response = await fetch(`${API_BASE_URL}/api/store/inventory`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Accept': 'application/json',
-      'Authorization': `Bearer ${localStorage.getItem('token') || ''}`, // Ensure authentication token
     },
-    body: JSON.stringify(receiving),
+    body: JSON.stringify(data),
   });
-  if (!response.ok) throw new Error('Failed to receive stock');
+  return response.json();
 };
 
-export const generateStoreReport = async (type: string, startDate: string, endDate: string): Promise<StoreReport> => {
-  const response = await fetch(`http://127.0.0.1:8000/api/store/reports/${type}?start=${startDate}&end=${endDate}`, {
+export const fetchSuppliers = async () => {
+  const response = await fetch(`${API_BASE_URL}/api/store/suppliers`, {
+    method: 'GET',
     headers: {
-      'Accept': 'application/json',
-      'Authorization': `Bearer ${localStorage.getItem('token') || ''}`, // Ensure authentication token
+      'Content-Type': 'application/json',
     },
   });
-  if (!response.ok) throw new Error('Failed to generate report');
+  return response.json();
+};
+
+export const createStockAdjustment = async (data: any) => {
+  const response = await fetch(`${API_BASE_URL}/api/store/stock/adjustment`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(data),
+  });
+  return response.json();
+};
+
+export const createStockTaking = async (data: any) => {
+  const response = await fetch(`${API_BASE_URL}/api/store/stock/taking`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(data),
+  });
+  return response.json();
+};
+
+export const createStockReceiving = async (data: any) => {
+  const response = await fetch(`${API_BASE_URL}/api/store/stock/receiving`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(data),
+  });
+  return response.json();
+};
+
+export const fetchReports = async (type: string, startDate: string, endDate: string) => {
+  const response = await fetch(`${API_BASE_URL}/api/store/reports/${type}?start=${startDate}&end=${endDate}`, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  });
   return response.json();
 };

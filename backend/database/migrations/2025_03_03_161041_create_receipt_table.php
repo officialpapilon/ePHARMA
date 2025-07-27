@@ -18,7 +18,7 @@ return new class extends Migration
             $table->decimal('total_amount', 8, 2);
             $table->decimal('payed_amount', 8, 2);
             $table->decimal('change_amount', 8, 2);
-            $table->foreign('transaction_id')->references('id')->on('dispensed');
+            // Removed foreign key constraint to avoid migration order issues
             $table->string('created_by');
             $table->string('updated_by')->nullable();
             $table->index(['transaction_id', 'customer_id']);

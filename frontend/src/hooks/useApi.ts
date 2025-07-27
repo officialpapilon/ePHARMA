@@ -77,6 +77,40 @@ export function useApi<T>(
   };
 }
 
+// Custom hook that provides apiCall function for components
+export function useApiCall() {
+  const apiCall = useCallback(async (endpoint: string, options?: any) => {
+    try {
+      const method = options?.method || 'GET';
+      const data = options?.data;
+      
+      let response;
+      switch (method) {
+        case 'GET':
+          response = await apiClient.get(endpoint, options);
+          break;
+        case 'POST':
+          response = await apiClient.post(endpoint, data, options);
+          break;
+        case 'PUT':
+          response = await apiClient.put(endpoint, data, options);
+          break;
+        case 'DELETE':
+          response = await apiClient.delete(endpoint, options);
+          break;
+        default:
+          throw new Error(`Unsupported HTTP method: ${method}`);
+      }
+      
+      return response.data;
+    } catch (error: any) {
+      throw error;
+    }
+  }, []);
+
+  return { apiCall };
+}
+
 export function usePaginatedApi<T>(
   endpoint: string,
   initialFilters: FilterOptions = {}

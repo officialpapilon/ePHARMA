@@ -1,267 +1,371 @@
-import React from 'react';
-import { Users, Package, ShoppingCart, DollarSign, TrendingUp } from 'lucide-react';
-import { useTheme } from '@mui/material';
+import React, { useState, useEffect } from 'react';
+import {
+  Box,
+  Typography,
+  Paper,
+  Grid,
+  Card,
+  CardContent,
+  CardActions,
+  Button,
+  Chip,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemSecondaryAction,
+  IconButton,
+  Divider,
+  Alert,
+  LinearProgress,
+} from '@mui/material';
+import {
+  ShoppingCart as OrderIcon,
+  Payment as PaymentIcon,
+  LocalShipping as DeliveryIcon,
+  CheckCircle as CompletedIcon,
+  Pending as PendingIcon,
+  Warning as WarningIcon,
+  Visibility as ViewIcon,
+  Receipt as ReceiptIcon,
+  Description as InvoiceIcon,
+} from '@mui/icons-material';
+import { useApiCall } from '../../hooks/useApi';
+import { useNotification } from '../../hooks/useNotification';
+import { formatCurrency, formatDate } from '../../utils/formatters';
+import StatusChip from '../../components/common/StatusChip/StatusChip';
 
-const Dashboard = () => {
-  const theme = useTheme();
+interface DashboardStats {
+  total_orders: number;
+  pending_orders: number;
+  confirmed_orders: number;
+  processing_orders: number;
+  ready_for_delivery: number;
+  delivered_orders: number;
+  total_revenue: number;
+  total_paid: number;
+  total_outstanding: number;
+  pending_payments: number;
+  pending_deliveries: number;
+  overdue_orders: number;
+}
+
+interface WorkflowItem {
+  id: number;
+  order_number: string;
+  customer_name: string;
+  total_amount: number;
+  status: string;
+  payment_status: string;
+  delivery_type: string;
+  created_at: string;
+  next_action: string;
+}
+
+const WholesaleDashboard: React.FC = () => {
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [workflowItems, setWorkflowItems] = useState<WorkflowItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<'orders' | 'payments' | 'deliveries'>('orders');
+
+  const { apiCall } = useApiCall();
+  const { showSuccess, showError } = useNotification();
+
+  const fetchDashboardData = async () => {
+    try {
+      setLoading(true);
+      const [statsResponse, workflowResponse] = await Promise.all([
+        apiCall('/wholesale/reports/dashboard'),
+        apiCall('/wholesale/workflow/items')
+      ]);
+
+      if (statsResponse.success) {
+        setStats(statsResponse.data);
+      }
+
+      if (workflowResponse.success) {
+        setWorkflowItems(workflowResponse.data);
+      }
+    } catch (error) {
+      showError('Failed to fetch dashboard data');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchDashboardData();
+  }, []);
+
+  const getWorkflowItemsByType = (type: string) => {
+    return workflowItems.filter(item => {
+      switch (type) {
+        case 'orders':
+          return ['draft', 'confirmed', 'processing'].includes(item.status);
+        case 'payments':
+          return ['confirmed', 'processing'].includes(item.status) &&
+                 ['pending', 'partial'].includes(item.payment_status);
+        case 'deliveries':
+          return item.status === 'ready_for_delivery' &&
+                 item.delivery_type === 'delivery';
+        default:
+          return false;
+      }
+    });
+  };
+
+  const handleAction = async (orderId: number, action: string) => {
+    try {
+      const response = await apiCall(`/wholesale/orders/${orderId}/${action}`, {
+        method: 'POST'
+      });
+
+      if (response.success) {
+        showSuccess(`Order ${action}ed successfully`);
+        fetchDashboardData();
+      }
+    } catch (error) {
+      showError(`Failed to ${action} order`);
+    }
+  };
+
+  if (loading) {
+    return <LinearProgress />;
+  }
+
   return (
-    <div style={{ padding: '16px', background: theme.palette.background.default, minHeight: '100vh', width: '100%', maxWidth: '100vw', boxSizing: 'border-box' }}>
-      <h2 style={{ fontSize: 24, fontWeight: 700, color: theme.palette.text.primary, marginBottom: 24 }}>Wholesale Dashboard</h2>
-      
-      {/* Stats Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 24, marginBottom: 32 }}>
-        {/* Card 1 */}
-        <div style={{ background: theme.palette.background.paper, padding: 24, borderRadius: 16, boxShadow: theme.shadows[1], border: `1px solid ${theme.palette.divider}` }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
-            <div>
-              <p style={{ fontSize: 14, fontWeight: 500, color: theme.palette.text.secondary }}>Total Sales</p>
-              <p style={{ marginTop: 8, fontSize: 28, fontWeight: 700, color: theme.palette.text.primary }}>$48,295</p>
-            </div>
-            <div style={{ padding: 12, borderRadius: '50%', background: theme.palette.success.light }}>
-              <DollarSign style={{ color: theme.palette.success.main, width: 24, height: 24 }} />
-            </div>
-          </div>
-          <div style={{ marginTop: 16, display: 'flex', alignItems: 'center' }}>
-            <TrendingUp style={{ color: theme.palette.success.main, marginRight: 6, width: 16, height: 16 }} />
-            <span style={{ fontSize: 14, fontWeight: 500, color: theme.palette.success.main }}>+12.5%</span>
-            <span style={{ fontSize: 14, color: theme.palette.text.secondary, marginLeft: 8 }}>from last month</span>
-          </div>
-        </div>
-        
-        {/* Card 2 */}
-        <div style={{ background: theme.palette.background.paper, padding: 24, borderRadius: 16, boxShadow: theme.shadows[1], border: `1px solid ${theme.palette.divider}` }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
-            <div>
-              <p style={{ fontSize: 14, fontWeight: 500, color: theme.palette.text.secondary }}>Customers</p>
-              <p style={{ marginTop: 8, fontSize: 28, fontWeight: 700, color: theme.palette.text.primary }}>254</p>
-            </div>
-            <div style={{ padding: 12, borderRadius: '50%', background: theme.palette.info.light }}>
-              <Users style={{ color: theme.palette.info.main, width: 24, height: 24 }} />
-            </div>
-          </div>
-          <div style={{ marginTop: 16, display: 'flex', alignItems: 'center' }}>
-            <TrendingUp style={{ color: theme.palette.success.main, marginRight: 6, width: 16, height: 16 }} />
-            <span style={{ fontSize: 14, fontWeight: 500, color: theme.palette.success.main }}>+8.2%</span>
-            <span style={{ fontSize: 14, color: theme.palette.text.secondary, marginLeft: 8 }}>from last month</span>
-          </div>
-        </div>
-        
-        {/* Card 3 */}
-        <div style={{ background: theme.palette.background.paper, padding: 24, borderRadius: 16, boxShadow: theme.shadows[1], border: `1px solid ${theme.palette.divider}` }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
-            <div>
-              <p style={{ fontSize: 14, fontWeight: 500, color: theme.palette.text.secondary }}>Items Sold</p>
-              <p style={{ marginTop: 8, fontSize: 28, fontWeight: 700, color: theme.palette.text.primary }}>1,876</p>
-            </div>
-            <div style={{ padding: 12, borderRadius: '50%', background: theme.palette.warning.light }}>
-              <Package style={{ color: theme.palette.warning.main, width: 24, height: 24 }} />
-            </div>
-          </div>
-          <div style={{ marginTop: 16, display: 'flex', alignItems: 'center' }}>
-            <TrendingUp style={{ color: theme.palette.success.main, marginRight: 6, width: 16, height: 16 }} />
-            <span style={{ fontSize: 14, fontWeight: 500, color: theme.palette.success.main }}>+15.3%</span>
-            <span style={{ fontSize: 14, color: theme.palette.text.secondary, marginLeft: 8 }}>from last month</span>
-          </div>
-        </div>
-        
-        {/* Card 4 */}
-        <div style={{ background: theme.palette.background.paper, padding: 24, borderRadius: 16, boxShadow: theme.shadows[1], border: `1px solid ${theme.palette.divider}` }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
-            <div>
-              <p style={{ fontSize: 14, fontWeight: 500, color: theme.palette.text.secondary }}>Pending Payments</p>
-              <p style={{ marginTop: 8, fontSize: 28, fontWeight: 700, color: theme.palette.text.primary }}>$5,240</p>
-            </div>
-            <div style={{ padding: 12, borderRadius: '50%', background: theme.palette.error.light }}>
-              <ShoppingCart style={{ color: theme.palette.error.main, width: 24, height: 24 }} />
-            </div>
-          </div>
-          <div style={{ marginTop: 16, display: 'flex', alignItems: 'center' }}>
-            <TrendingUp style={{ color: theme.palette.error.main, marginRight: 6, width: 16, height: 16 }} />
-            <span style={{ fontSize: 14, fontWeight: 500, color: theme.palette.error.main }}>+3.7%</span>
-            <span style={{ fontSize: 14, color: theme.palette.text.secondary, marginLeft: 8 }}>from last month</span>
-          </div>
-        </div>
-      </div>
-      
-      {/* Sales Chart */}
-      <div style={{ background: theme.palette.background.paper, padding: 24, borderRadius: 16, boxShadow: theme.shadows[1], marginBottom: 32, border: `1px solid ${theme.palette.divider}` }}>
-        <h3 style={{ fontSize: 18, fontWeight: 600, color: theme.palette.text.primary, marginBottom: 16 }}>Monthly Sales</h3>
-        <div style={{ height: 256 }}>
-          {/* This would be a real chart in a production app */}
-          <div style={{ height: '100%', display: 'flex', alignItems: 'flex-end', gap: 8 }}>
-            {[35, 45, 30, 60, 75, 85, 70, 65, 80, 90, 95, 100].map((height, index) => (
-              <div key={index} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                <div 
-                  style={{ width: '100%', background: theme.palette.primary.main, borderRadius: '8px 8px 0 0', height: `${height}%` }}
-                  className="rounded-t"
-                ></div>
-                <div style={{ fontSize: 12, color: theme.palette.text.secondary, marginTop: 8 }}>{['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][index]}</div>
-              </div>
+    <Box sx={{ p: 3 }}>
+      <Typography variant="h4" component="h1" gutterBottom>
+        Wholesale Dashboard
+      </Typography>
+
+      {/* Statistics Cards */}
+      {stats && (
+        <Grid container spacing={3} sx={{ mb: 4 }}>
+          <Grid item xs={12} sm={6} md={3}>
+            <Card>
+              <CardContent>
+                <Typography color="textSecondary" gutterBottom>
+                  Total Orders
+                </Typography>
+                <Typography variant="h4">{stats.total_orders}</Typography>
+                <Typography variant="body2" color="textSecondary">
+                  Revenue: {formatCurrency(stats.total_revenue)}
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <Card>
+              <CardContent>
+                <Typography color="textSecondary" gutterBottom>
+                  Pending Orders
+                </Typography>
+                <Typography variant="h4" color="warning.main">
+                  {stats.pending_orders}
+                </Typography>
+                <Typography variant="body2" color="textSecondary">
+                  Ready for processing
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <Card>
+              <CardContent>
+                <Typography color="textSecondary" gutterBottom>
+                  Pending Payments
+                </Typography>
+                <Typography variant="h4" color="error.main">
+                  {stats.pending_payments}
+                </Typography>
+                <Typography variant="body2" color="textSecondary">
+                  Outstanding: {formatCurrency(stats.total_outstanding)}
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <Card>
+              <CardContent>
+                <Typography color="textSecondary" gutterBottom>
+                  Pending Deliveries
+                </Typography>
+                <Typography variant="h4" color="info.main">
+                  {stats.pending_deliveries}
+                </Typography>
+                <Typography variant="body2" color="textSecondary">
+                  Ready for delivery
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+        </Grid>
+      )}
+
+      {/* Workflow Tabs */}
+      <Paper sx={{ mb: 3 }}>
+        <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
+          <Box sx={{ display: 'flex' }}>
+            <Button
+              variant={activeTab === 'orders' ? 'contained' : 'text'}
+              onClick={() => setActiveTab('orders')}
+              startIcon={<OrderIcon />}
+            >
+              Orders ({getWorkflowItemsByType('orders').length})
+            </Button>
+            <Button
+              variant={activeTab === 'payments' ? 'contained' : 'text'}
+              onClick={() => setActiveTab('payments')}
+              startIcon={<PaymentIcon />}
+            >
+              Payments ({getWorkflowItemsByType('payments').length})
+            </Button>
+            <Button
+              variant={activeTab === 'deliveries' ? 'contained' : 'text'}
+              onClick={() => setActiveTab('deliveries')}
+              startIcon={<DeliveryIcon />}
+            >
+              Deliveries ({getWorkflowItemsByType('deliveries').length})
+            </Button>
+          </Box>
+        </Box>
+      </Paper>
+
+      {/* Workflow Items */}
+      <Paper>
+        <Box sx={{ p: 2 }}>
+          <Typography variant="h6" gutterBottom>
+            {activeTab === 'orders' && 'Orders Pending Confirmation'}
+            {activeTab === 'payments' && 'Orders Pending Payment'}
+            {activeTab === 'deliveries' && 'Orders Ready for Delivery'}
+          </Typography>
+
+          <List>
+            {getWorkflowItemsByType(activeTab).map((item) => (
+              <React.Fragment key={item.id}>
+                <ListItem>
+                  <ListItemText
+                    primary={
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Typography variant="subtitle1" fontWeight="bold">
+                          {item.order_number}
+                        </Typography>
+                        <StatusChip status={item.status} size="small" />
+                        <StatusChip status={item.payment_status} size="small" />
+                      </Box>
+                    }
+                    secondary={
+                      <Box>
+                        <Typography variant="body2">
+                          Customer: {item.customer_name}
+                        </Typography>
+                        <Typography variant="body2">
+                          Amount: {formatCurrency(item.total_amount)}
+                        </Typography>
+                        <Typography variant="body2" color="textSecondary">
+                          Next Action: {item.next_action}
+                        </Typography>
+                      </Box>
+                    }
+                  />
+                  <ListItemSecondaryAction>
+                    <Box sx={{ display: 'flex', gap: 1 }}>
+                      <IconButton size="small">
+                        <ViewIcon />
+                      </IconButton>
+                      {activeTab === 'orders' && (
+                        <Button
+                          size="small"
+                          variant="contained"
+                          onClick={() => handleAction(item.id, 'confirm')}
+                        >
+                          Confirm
+                        </Button>
+                      )}
+                      {activeTab === 'payments' && (
+                        <Button
+                          size="small"
+                          variant="contained"
+                          startIcon={<PaymentIcon />}
+                          onClick={() => handleAction(item.id, 'process-payment')}
+                        >
+                          Process Payment
+                        </Button>
+                      )}
+                      {activeTab === 'deliveries' && (
+                        <Button
+                          size="small"
+                          variant="contained"
+                          startIcon={<DeliveryIcon />}
+                          onClick={() => handleAction(item.id, 'schedule-delivery')}
+                        >
+                          Schedule Delivery
+                        </Button>
+                      )}
+                    </Box>
+                  </ListItemSecondaryAction>
+                </ListItem>
+                <Divider />
+              </React.Fragment>
             ))}
-          </div>
-        </div>
-      </div>
-      
-      {/* Top Products and Customers */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 24 }}>
-        <div style={{ background: theme.palette.background.paper, padding: 24, borderRadius: 16, boxShadow: theme.shadows[1], border: `1px solid ${theme.palette.divider}` }}>
-          <h3 style={{ fontSize: 18, fontWeight: 600, color: theme.palette.text.primary, marginBottom: 16 }}>Top Selling Products</h3>
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', borderSpacing: 0 }}>
-              <thead style={{ background: theme.palette.background.paper }}>
-                <tr>
-                  <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 12, fontWeight: 500, color: theme.palette.text.secondary, textTransform: 'uppercase', letterSpacing: 'wider' }}>
-                    Product
-                  </th>
-                  <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 12, fontWeight: 500, color: theme.palette.text.secondary, textTransform: 'uppercase', letterSpacing: 'wider' }}>
-                    Sold
-                  </th>
-                  <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 12, fontWeight: 500, color: theme.palette.text.secondary, textTransform: 'uppercase', letterSpacing: 'wider' }}>
-                    Revenue
-                  </th>
-                </tr>
-              </thead>
-              <tbody style={{ background: theme.palette.background.paper }}>
-                <tr>
-                  <td style={{ padding: '12px 16px', fontSize: 14, fontWeight: 500, color: theme.palette.text.primary }}>
-                    Paracetamol 500mg
-                  </td>
-                  <td style={{ padding: '12px 16px', fontSize: 14, color: theme.palette.text.secondary }}>
-                    324 units
-                  </td>
-                  <td style={{ padding: '12px 16px', fontSize: 14, color: theme.palette.text.secondary }}>
-                    Tsh.1,940.76
-                  </td>
-                </tr>
-                <tr>
-                  <td style={{ padding: '12px 16px', fontSize: 14, fontWeight: 500, color: theme.palette.text.primary }}>
-                    Amoxicillin 250mg
-                  </td>
-                  <td style={{ padding: '12px 16px', fontSize: 14, color: theme.palette.text.secondary }}>
-                    256 units
-                  </td>
-                  <td style={{ padding: '12px 16px', fontSize: 14, color: theme.palette.text.secondary }}>
-                    Tsh.3,200.00
-                  </td>
-                </tr>
-                <tr>
-                  <td style={{ padding: '12px 16px', fontSize: 14, fontWeight: 500, color: theme.palette.text.primary }}>
-                    Ibuprofen 400mg
-                  </td>
-                  <td style={{ padding: '12px 16px', fontSize: 14, color: theme.palette.text.secondary }}>
-                    210 units
-                  </td>
-                  <td style={{ padding: '12px 16px', fontSize: 14, color: theme.palette.text.secondary }}>
-                    Tsh.1,522.50
-                  </td>
-                </tr>
-                <tr>
-                  <td style={{ padding: '12px 16px', fontSize: 14, fontWeight: 500, color: theme.palette.text.primary }}>
-                    Cetirizine 10mg
-                  </td>
-                  <td style={{ padding: '12px 16px', fontSize: 14, color: theme.palette.text.secondary }}>
-                    198 units
-                  </td>
-                  <td style={{ padding: '12px 16px', fontSize: 14, color: theme.palette.text.secondary }}>
-                    Tsh.1,732.50
-                  </td>
-                </tr>
-                <tr>
-                  <td style={{ padding: '12px 16px', fontSize: 14, fontWeight: 500, color: theme.palette.text.primary }}>
-                    Omeprazole 20mg
-                  </td>
-                  <td style={{ padding: '12px 16px', fontSize: 14, color: theme.palette.text.secondary }}>
-                    175 units
-                  </td>
-                  <td style={{ padding: '12px 16px', fontSize: 14, color: theme.palette.text.secondary }}>
-                    Tsh.2,625.00
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-        
-        <div style={{ background: theme.palette.background.paper, padding: 24, borderRadius: 16, boxShadow: theme.shadows[1], border: `1px solid ${theme.palette.divider}` }}>
-          <h3 style={{ fontSize: 18, fontWeight: 600, color: theme.palette.text.primary, marginBottom: 16 }}>Top Customers</h3>
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', borderSpacing: 0 }}>
-              <thead style={{ background: theme.palette.background.paper }}>
-                <tr>
-                  <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 12, fontWeight: 500, color: theme.palette.text.secondary, textTransform: 'uppercase', letterSpacing: 'wider' }}>
-                    Customer
-                  </th>
-                  <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 12, fontWeight: 500, color: theme.palette.text.secondary, textTransform: 'uppercase', letterSpacing: 'wider' }}>
-                    Orders
-                  </th>
-                  <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 12, fontWeight: 500, color: theme.palette.text.secondary, textTransform: 'uppercase', letterSpacing: 'wider' }}>
-                    Spent
-                  </th>
-                </tr>
-              </thead>
-              <tbody style={{ background: theme.palette.background.paper }}>
-                <tr>
-                  <td style={{ padding: '12px 16px', fontSize: 14, fontWeight: 500, color: theme.palette.text.primary }}>
-                    MediCare Hospital
-                  </td>
-                  <td style={{ padding: '12px 16px', fontSize: 14, color: theme.palette.text.secondary }}>
-                    32
-                  </td>
-                  <td style={{ padding: '12px 16px', fontSize: 14, color: theme.palette.text.secondary }}>
-                    Tsh.12,450.00
-                  </td>
-                </tr>
-                <tr>
-                  <td style={{ padding: '12px 16px', fontSize: 14, fontWeight: 500, color: theme.palette.text.primary }}>
-                    City Clinic
-                  </td>
-                  <td style={{ padding: '12px 16px', fontSize: 14, color: theme.palette.text.secondary }}>
-                    28
-                  </td>
-                  <td style={{ padding: '12px 16px', fontSize: 14, color: theme.palette.text.secondary }}>
-                    Tsh.9,875.50
-                  </td>
-                </tr>
-                <tr>
-                  <td style={{ padding: '12px 16px', fontSize: 14, fontWeight: 500, color: theme.palette.text.primary }}>
-                    HealthPlus Pharmacy
-                  </td>
-                  <td style={{ padding: '12px 16px', fontSize: 14, color: theme.palette.text.secondary }}>
-                    25
-                  </td>
-                  <td style={{ padding: '12px 16px', fontSize: 14, color: theme.palette.text.secondary }}>
-                    Tsh.8,320.75
-                  </td>
-                </tr>
-                <tr>
-                  <td style={{ padding: '12px 16px', fontSize: 14, fontWeight: 500, color: theme.palette.text.primary }}>
-                    Wellness Center
-                  </td>
-                  <td style={{ padding: '12px 16px', fontSize: 14, color: theme.palette.text.secondary }}>
-                    22
-                  </td>
-                  <td style={{ padding: '12px 16px', fontSize: 14, color: theme.palette.text.secondary }}>
-                    Tsh.7,450.25
-                  </td>
-                </tr>
-                <tr>
-                  <td style={{ padding: '12px 16px', fontSize: 14, fontWeight: 500, color: theme.palette.text.primary }}>
-                    Community Health
-                  </td>
-                  <td style={{ padding: '12px 16px', fontSize: 14, color: theme.palette.text.secondary }}>
-                    18
-                  </td>
-                  <td style={{ padding: '12px 16px', fontSize: 14, color: theme.palette.text.secondary }}>
-                    Tsh.5,980.00
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    </div>
+          </List>
+
+          {getWorkflowItemsByType(activeTab).length === 0 && (
+            <Alert severity="info" sx={{ mt: 2 }}>
+              No items in this workflow stage.
+            </Alert>
+          )}
+        </Box>
+      </Paper>
+
+      {/* Quick Actions */}
+      <Paper sx={{ mt: 3 }}>
+        <Box sx={{ p: 2 }}>
+          <Typography variant="h6" gutterBottom>
+            Quick Actions
+          </Typography>
+          <Grid container spacing={2}>
+            <Grid item>
+              <Button
+                variant="contained"
+                startIcon={<OrderIcon />}
+                onClick={() => window.location.href = '/wholesale/orders'}
+              >
+                Create New Order
+              </Button>
+            </Grid>
+            <Grid item>
+              <Button
+                variant="outlined"
+                startIcon={<PaymentIcon />}
+                onClick={() => window.location.href = '/wholesale/payments'}
+              >
+                Process Payments
+              </Button>
+            </Grid>
+            <Grid item>
+              <Button
+                variant="outlined"
+                startIcon={<DeliveryIcon />}
+                onClick={() => window.location.href = '/wholesale/deliveries'}
+              >
+                Manage Deliveries
+              </Button>
+            </Grid>
+            <Grid item>
+              <Button
+                variant="outlined"
+                startIcon={<ReceiptIcon />}
+                onClick={() => window.location.href = '/wholesale/reports'}
+              >
+                View Reports
+              </Button>
+            </Grid>
+          </Grid>
+        </Box>
+      </Paper>
+    </Box>
   );
 };
 
-export default Dashboard;
+export default WholesaleDashboard;

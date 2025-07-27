@@ -15,6 +15,7 @@ class MedicinesCacheController extends Controller
     {
         $perPage = $request->input('per_page', 15);
         $search = $request->input('search');
+        $all = $request->input('all', false); // New parameter to get all records
         
         $query = MedicinesCache::query()
             ->select([
@@ -40,6 +41,17 @@ class MedicinesCacheController extends Controller
         
         $query->orderBy('product_name', 'asc');
         
+        // If all=true, return all records without pagination
+        if ($all) {
+            $medicines = $query->get();
+            
+            return response()->json([
+                'success' => true,
+                'data' => $medicines,
+                'message' => 'Medicines retrieved successfully'
+            ]);
+        }
+        
         $medicines = $query->paginate($perPage);
         
         return response()->json([
@@ -63,110 +75,60 @@ class MedicinesCacheController extends Controller
         return response()->json($cache);
     }
 
-    public function update(Request $request, $product_id)
+    public function update(Request $request, $id)
     {
-        Log::info('Update called', [
-            'product_id' => $product_id,
-            'request_data' => $request->all()
-        ]);
-    
- 
         $validated = $request->validate([
-            'quantity' => 'required|integer|min:1',
-            'Payment_ID' => 'required|string',
-            'Patient_ID' => 'required|string',
-            'transaction_id' => 'required|string',
-            'transaction_status' => 'required|string',
-            'payment_method' => 'required|string',
-            'approved_payment_method' => 'required|string',
-            'total_price' => 'required|numeric',
-            'created_by' => 'required|string',
+            'product_price' => 'nullable|numeric|min:0',
+            'buying_price' => 'nullable|numeric|min:0',
+            'current_quantity' => 'nullable|integer|min:0',
+            'expire_date' => 'nullable|date',
+            'batch_no' => 'nullable|string',
         ]);
-    
-        try {
-            $existingDispense = MedicineDispenseValidation::where('product_id', $product_id)
-                ->where('Payment_ID', $validated['Payment_ID'])
-                ->first();
-            
-            if ($existingDispense) {
-                Log::warning('Duplicate Payment_ID detected', [
-                    'product_id' => $product_id,
-                    'Payment_ID' => $validated['Payment_ID']
-                ]);
-                return response()->json([
-                    'message' => 'This payment has already been used to dispense this medicine'
-                ], 400);
-            }
-    
-            $batches = MedicinesCache::where('product_id', $product_id)
-                ->orderBy('expire_date', 'asc')
-                ->get();
-    
-            $totalQuantity = $batches->sum('current_quantity');
-    
-            if ($totalQuantity < $validated['quantity']) {
-                Log::warning('Insufficient quantity across all batches', [
-                    'product_id' => $product_id,
-                    'total_quantity' => $totalQuantity,
-                    'requested_quantity' => $validated['quantity']
-                ]);
-                return response()->json(['message' => 'Insufficient Medicine quantity across all batches'], 400);
-            }
-    
-            $remainingQuantity = $validated['quantity'];
-            foreach ($batches as $batch) {
-                if ($remainingQuantity <= 0) break;
-                $deductedQuantity = min($batch->current_quantity, $remainingQuantity);
-                $batch->current_quantity -= $deductedQuantity;
-                $remainingQuantity -= $deductedQuantity;
-                $batch->save();
-            }
-    
-            MedicineDispenseValidation::create([
-                'product_id' => $product_id,
-                'Payment_ID' => $validated['Payment_ID'],
-                'Patient_ID' => $validated['Patient_ID'],
-                'quantity' => $validated['quantity']
-            ]);
-    
-            Dispensed::create([
-                'transaction_id' => $validated['transaction_id'],
-                'transaction_status' => $validated['transaction_status'],
-                'customer_id' => $validated['Patient_ID'], 
-                'product_purchased' => [$product_id], 
-                'product_quantity' => [$validated['quantity']], 
-                'approved_payment_method' => $validated ['approved_payment_method'], 
-                'total_price' => $validated['total_price'],
-                'created_by' => $validated['created_by'],
-            ]);
 
-            PaymentDetails::create([
-                'transaction_id' => $validated['transaction_id'],
-                'payment_status' => $validated['transaction_status'],
-                'payment_method' => $validated ['approved_payment_method'], 
-                'approved_payment_method' => $validated ['approved_payment_method'], 
-                'payed_amount' => $validated['total_price'],
-                'created_by' => $validated['created_by'],
-                'customer_id' => $validated['Patient_ID'],
-            ]);
-    
-            return response()->json(['message' => 'Dispensed successfully'], 200);
+        try {
+            $medicine = MedicinesCache::findOrFail($id);
+            $medicine->update($validated);
             
-        } catch (\Exception $e) {
-            Log::error('Dispense Error', [
-                'product_id' => $product_id,
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
-            ]);
-    
             return response()->json([
-                'message' => env('APP_DEBUG') ? $e->getMessage() : 'An unexpected error occurred',
-                'error_details' => env('APP_DEBUG') ? [
-                    'message' => $e->getMessage(),
-                    'file' => $e->getFile(),
-                    'line' => $e->getLine(),
-                    'trace' => $e->getTrace()
-                ] : null
+                'success' => true,
+                'data' => $medicine,
+                'message' => 'Medicine updated successfully'
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to update medicine',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function store(Request $request)
+    {
+        $validated = $request->validate([
+            'product_id' => 'required|string',
+            'product_name' => 'required|string',
+            'product_price' => 'required|numeric|min:0',
+            'buying_price' => 'nullable|numeric|min:0',
+            'product_category' => 'required|string',
+            'expire_date' => 'required|date',
+            'current_quantity' => 'required|integer|min:0',
+            'batch_no' => 'required|string',
+        ]);
+
+        try {
+            $medicine = MedicinesCache::create($validated);
+            
+            return response()->json([
+                'success' => true,
+                'data' => $medicine,
+                'message' => 'Medicine created successfully'
+            ], 201);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to create medicine',
+                'error' => $e->getMessage()
             ], 500);
         }
     }

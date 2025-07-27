@@ -1,52 +1,111 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, Download, Filter, Search, BarChart3, Package, AlertTriangle, DollarSign } from 'lucide-react';
-import { API_BASE_URL } from '../../../constants'; // Adjust path as needed
-import jsPDF from 'jspdf';
-import 'jspdf-autotable';
+import { 
+  Search, 
+  AlertCircle, 
+  X, 
+  ChevronLeft, 
+  ChevronRight,
+  RefreshCw,
+  FileSpreadsheet,
+  Package,
+  Clock,
+  DollarSign
+} from 'lucide-react';
 import { useTheme } from '@mui/material';
+import { Doughnut } from 'react-chartjs-2';
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  ArcElement,
+  Title,
+  Tooltip,
+  Legend,
+} from 'chart.js';
+import { API_BASE_URL } from '../../../constants';
+import DataTable from '../../components/common/DataTable/DataTable';
+import { TableColumn } from '../../../types';
+import LoadingSpinner from '../../components/common/LoadingSpinner/LoadingSpinner';
 
-interface ReportItem {
-  id: string; // Maps to product_id
-  name: string; // Maps to product_name
-  category: string; // Maps to product_category
-  stock: number; // Maps to current_quantity
-  price: number; // Maps to product_price
-  unit?: string; // Optional, not in /api/medicines-cache
-  expiryDate: string; // Maps to expire_date
-  batchNumber: string; // Maps to batch_no
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  ArcElement,
+  Title,
+  Tooltip,
+  Legend
+);
+
+interface InventoryItem {
+  id: number;
+  product_id: string;
+  batch_no: string;
+  product_name: string;
+  product_price: string;
+  buying_price: string | null;
+  product_category: string;
+  expire_date: string;
+  current_quantity: number;
+  created_at: string;
+  updated_at: string;
 }
 
-const Reports = () => {
+interface InventorySummary {
+  total_products: number;
+  total_value: number;
+  low_stock_count: number;
+  out_of_stock_count: number;
+  expiring_soon_count: number;
+  categories: string[];
+}
+
+const InventoryReports: React.FC = () => {
   const theme = useTheme();
-  const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
-  const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState('All');
-  const [reportType, setReportType] = useState<'all' | 'lowStock' | 'expiring'>('all');
-  const [reportData, setReportData] = useState<ReportItem[]>([]);
-  const [categories, setCategories] = useState<string[]>(['All']);
+  const [inventory, setInventory] = useState<InventoryItem[]>([]);
+  const [filteredInventory, setFilteredInventory] = useState<InventoryItem[]>([]);
+  const [summary, setSummary] = useState<InventorySummary | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage] = useState(15);
+  const [totalItems, setTotalItems] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
 
-  // Thresholds (since minStock isn't available)
-  const LOW_STOCK_THRESHOLD = 10; // Define a default low stock threshold
+  // Filters
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('');
+  const [selectedStockStatus, setSelectedStockStatus] = useState('');
+  const [sortBy, setSortBy] = useState('product_name');
+  const [sortOrder, setSortOrder] = useState('asc');
 
   useEffect(() => {
-    if (!localStorage.getItem('token')) {
-      window.location.href = '/login';
-    } else {
-      fetchCategories();
-      fetchReportData();
-    }
-  }, []);
+    fetchInventoryData();
+  }, [currentPage, sortBy, sortOrder]);
 
-  const fetchReportData = async () => {
+  useEffect(() => {
+    filterInventory();
+  }, [inventory, searchTerm, selectedCategory, selectedStockStatus]);
+
+  const fetchInventoryData = async () => {
     setLoading(true);
     setError(null);
     try {
       const token = localStorage.getItem('token');
       if (!token) throw new Error('No authentication token found');
-      const response = await fetch(`${API_BASE_URL}/api/medicines-cache`, {
+
+      const params = new URLSearchParams({
+        page: currentPage.toString(),
+        per_page: itemsPerPage.toString(),
+        sort_by: sortBy,
+        sort_order: sortOrder,
+        ...(searchTerm && { search: searchTerm }),
+        ...(selectedCategory && { category: selectedCategory }),
+        ...(selectedStockStatus && { stock_status: selectedStockStatus })
+      });
+
+      const response = await fetch(`${API_BASE_URL}/api/inventory-reports?${params}`, {
         headers: {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
@@ -54,391 +113,737 @@ const Reports = () => {
           'ngrok-skip-browser-warning': 'true',
         },
       });
-      const text = await response.text();
-      console.log('Raw response from /medicines-cache:', text);
 
       if (!response.ok) {
-        if (response.status === 401) {
-          localStorage.removeItem('token');
-          window.location.href = '/login';
-          return;
-        }
-        throw new Error(`HTTP ${response.status}: ${text || 'Unknown error'}`);
+        throw new Error(`Failed to fetch inventory data: ${response.status}`);
       }
-      if (!text) {
-        setReportData([]);
-        return;
+
+      const result = await response.json();
+      if (result.success) {
+        setInventory(result.data);
+        setSummary(result.summary);
+        setTotalItems(result.meta.total);
+        setTotalPages(result.meta.last_page);
+      } else {
+        setInventory([]);
+        setSummary(null);
       }
-      const data = JSON.parse(text);
-      if (!Array.isArray(data)) throw new Error('Expected an array of medicines');
-
-      const mappedData: ReportItem[] = data.map((item: any) => ({
-        id: String(item.product_id),
-        name: item.product_name || 'Unknown Item',
-        category: item.product_category || 'N/A',
-        stock: parseInt(item.current_quantity, 10) || 0,
-        price: parseFloat(item.product_price) || 0,
-        unit: item.unit, 
-        expiryDate: item.expire_date || 'N/A',
-        batchNumber: item.batch_no || 'N/A',
-      }));
-
-      console.log('Mapped report data:', mappedData);
-      setReportData(mappedData);
-    } catch (err: any) {
-      console.error('Fetch report error:', err.message);
-      setError('Unable to fetch inventory report. Please try again later.');
-      setReportData([]);
+    } catch (err: unknown) {
+      console.error('Fetch inventory error:', err);
+      setError(err instanceof Error ? err.message : 'An unknown error occurred');
+      setInventory([]);
+      setSummary(null);
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchCategories = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      if (!token) return;
-      const response = await fetch(`${API_BASE_URL}/api/categories`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'ngrok-skip-browser-warning': 'true',
-        },
-      });
-      const text = await response.text();
-      if (!response.ok) throw new Error(`HTTP ${response.status}: ${text || 'Unknown error'}`);
-      const data = JSON.parse(text);
-      setCategories(['All', ...data.map((cat: any) => cat.name || cat)]);
-    } catch (err: any) {
-      console.error('Fetch categories error:', err.message);
-      setCategories(['All']); // Fallback
+  const filterInventory = () => {
+    let filtered = inventory;
+
+    if (searchTerm) {
+      filtered = filtered.filter(item =>
+        item.product_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.product_category.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.batch_no.toLowerCase().includes(searchTerm.toLowerCase())
+      );
     }
+
+    if (selectedCategory) {
+      filtered = filtered.filter(item => item.product_category === selectedCategory);
+    }
+
+    if (selectedStockStatus) {
+      switch (selectedStockStatus) {
+        case 'low':
+          filtered = filtered.filter(item => item.current_quantity <= 5 && item.current_quantity > 0);
+          break;
+        case 'out':
+          filtered = filtered.filter(item => item.current_quantity === 0);
+          break;
+        case 'normal':
+          filtered = filtered.filter(item => item.current_quantity > 5);
+          break;
+      }
+    }
+
+    setFilteredInventory(filtered);
   };
 
-  const filteredData = reportData.filter((item) => {
-    const expiryDate = new Date(item.expiryDate);
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    end.setHours(23, 59, 59, 999);
+  const handleExportExcel = () => {
+    const exportData = filteredInventory.map(item => ({
+      'Product ID': item.product_id,
+      'Product Name': item.product_name,
+      'Batch No': item.batch_no,
+      'Category': item.product_category,
+      'Current Quantity': item.current_quantity,
+      'Unit Price': parseFloat(item.product_price),
+      'Buying Price': item.buying_price ? parseFloat(item.buying_price) : 0,
+      'Total Value': item.current_quantity * parseFloat(item.product_price),
+      'Expire Date': new Date(item.expire_date).toLocaleDateString(),
+      'Status': item.current_quantity === 0 ? 'Out of Stock' : 
+                item.current_quantity <= 5 ? 'Low Stock' : 'In Stock'
+    }));
 
-    const matchesSearch =
-      item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.batchNumber.toLowerCase().includes(searchTerm.toLowerCase());
+    // Create CSV content
+    const headers = Object.keys(exportData[0] || {});
+    const csvContent = [
+      headers.join(','),
+      ...exportData.map(row => headers.map(header => `"${(row as Record<string, string | number>)[header]}"`).join(','))
+    ].join('\n');
 
-    const matchesCategory = categoryFilter === 'All' || item.category === categoryFilter;
+    // Download file
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `inventory_report_${new Date().toISOString().slice(0, 10)}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
-    const isLowStock = item.stock <= LOW_STOCK_THRESHOLD;
-    const isExpiring = item.expiryDate !== 'N/A' && expiryDate >= start && expiryDate <= end;
+  const formatCurrency = (amount: number) => {
+    return `Tsh ${amount.toLocaleString()}`;
+  };
 
-    if (reportType === 'lowStock') return isLowStock && matchesSearch && matchesCategory;
-    if (reportType === 'expiring') return isExpiring && matchesSearch && matchesCategory;
-    return matchesSearch && matchesCategory;
-  });
+  const formatNumber = (num: number) => {
+    return num.toLocaleString();
+  };
 
-  const handleExport = () => {
-    const doc = new jsPDF('p', 'mm', 'a4');
-    const margin = 14;
-    const title = `Inventory Report - ${reportType === 'all' ? 'All Items' : reportType === 'lowStock' ? 'Low Stock' : 'Expiring Items'}`;
+  const getStockStatusColor = (quantity: number) => {
+    if (quantity === 0) return theme.palette.error.main;
+    if (quantity <= 5) return theme.palette.warning.main;
+    return theme.palette.success.main;
+  };
 
-    doc.setFontSize(18);
-    doc.setTextColor(theme.palette.text.primary);
-    doc.text(title, margin, 20);
+  const getStockStatusText = (quantity: number) => {
+    if (quantity === 0) return 'Out of Stock';
+    if (quantity <= 5) return 'Low Stock';
+    return 'In Stock';
+  };
 
-    doc.setFontSize(10);
-    doc.setTextColor(theme.palette.text.secondary);
-    doc.text(`Date Range: ${startDate} to ${endDate}`, margin, 30);
-    doc.text(`Generated on: ${new Date().toLocaleString()}`, margin, 36);
+  // DataTable columns
+  const columns: TableColumn[] = [
+    {
+      key: 'product_name',
+      header: 'Product Name',
+      sortable: true,
+      width: '25%'
+    },
+    {
+      key: 'batch_no',
+      header: 'Batch No',
+      sortable: true,
+      width: '12%'
+    },
+    {
+      key: 'product_category',
+      header: 'Category',
+      sortable: true,
+      width: '15%'
+    },
+    {
+      key: 'current_quantity',
+      header: 'Quantity',
+      sortable: true,
+      width: '10%',
+      render: (row: InventoryItem) => {
+        if (!row) return '-';
+        return (
+          <span style={{ 
+            fontWeight: 600, 
+            color: getStockStatusColor(row.current_quantity)
+          }}>
+            {row.current_quantity}
+          </span>
+        );
+      }
+    },
+    {
+      key: 'product_price',
+      header: 'Unit Price',
+      sortable: true,
+      width: '12%',
+      render: (row: InventoryItem) => {
+        if (!row) return '-';
+        return formatCurrency(parseFloat(row.product_price));
+      }
+    },
+    {
+      key: 'buying_price',
+      header: 'Buying Price',
+      sortable: true,
+      width: '12%',
+      render: (row: InventoryItem) => {
+        if (!row || !row.buying_price) return '-';
+        return formatCurrency(parseFloat(row.buying_price));
+      }
+    },
+    {
+      key: 'total_value',
+      header: 'Total Value',
+      sortable: true,
+      width: '12%',
+      render: (row: InventoryItem) => {
+        if (!row) return '-';
+        const totalValue = row.current_quantity * parseFloat(row.product_price);
+        return formatCurrency(totalValue);
+      }
+    },
+    {
+      key: 'stock_status',
+      header: 'Status',
+      sortable: false,
+      width: '12%',
+      render: (row: InventoryItem) => {
+        if (!row) return '-';
+        return (
+          <span style={{
+            padding: '4px 8px',
+            borderRadius: 12,
+            fontSize: 12,
+            fontWeight: 500,
+            background: getStockStatusColor(row.current_quantity) + '20',
+            color: getStockStatusColor(row.current_quantity)
+          }}>
+            {getStockStatusText(row.current_quantity)}
+          </span>
+        );
+      }
+    }
+  ];
 
-    const tableData = filteredData.map((item) => [
-      item.name,
-      item.category,
-      item.stock,
-      item.price.toFixed(2),
-      (item.stock * item.price).toFixed(2),
-      item.expiryDate !== 'N/A' ? new Date(item.expiryDate).toLocaleDateString() : 'N/A',
-      item.batchNumber,
-      item.stock <= LOW_STOCK_THRESHOLD
-        ? 'Low Stock'
-        : item.expiryDate !== 'N/A' && new Date(item.expiryDate) < new Date()
-        ? 'Expired'
-        : 'In Stock',
-    ]);
-
-    (doc as any).autoTable({
-      head: [['Name', 'Category', 'Stock', 'Price (Tsh)', 'Value (Tsh)', 'Expiry Date', 'Batch No', 'Status']],
-      body: tableData,
-      startY: 44,
-      margin: { left: margin, right: margin },
-      styles: { fontSize: 9, cellPadding: 2, textColor: theme.palette.text.secondary },
-      headStyles: { fillColor: theme.palette.primary.main, textColor: theme.palette.common.white, fontSize: 10 },
-      alternateRowStyles: { fillColor: theme.palette.action.hover },
-      columnStyles: {
-        0: { cellWidth: 40 }, // Name
-        1: { cellWidth: 30 }, // Category
-        2: { cellWidth: 15 }, // Stock
-        3: { cellWidth: 15 }, // Price
-        4: { cellWidth: 15 }, // Value
-        5: { cellWidth: 25 }, // Expiry Date
-        6: { cellWidth: 25 }, // Batch No
-        7: { cellWidth: 20 }, // Status
+  // Chart data for category distribution
+  const categoryChartData = {
+    labels: summary?.categories || [],
+    datasets: [
+      {
+        data: summary?.categories.map(category => 
+          filteredInventory.filter(item => item.product_category === category).length
+        ) || [],
+        backgroundColor: [
+          theme.palette.primary.main,
+          theme.palette.secondary.main,
+          theme.palette.success.main,
+          theme.palette.warning.main,
+          theme.palette.error.main,
+          theme.palette.info.main,
+        ],
+        borderWidth: 2,
+        borderColor: theme.palette.background.paper,
       },
-    });
-
-    doc.save(`inventory_report_${reportType}_${new Date().toISOString().split('T')[0]}.pdf`);
+    ],
   };
 
-  const totalItems = filteredData.length;
-  const totalStock = filteredData.reduce((sum, item) => sum + item.stock, 0);
-  const totalValue = filteredData.reduce((sum, item) => sum + item.stock * item.price, 0);
-  const lowStockItems = filteredData.filter((item) => item.stock <= LOW_STOCK_THRESHOLD);
-  const expiringItems = filteredData.filter((item) => {
-    const expiryDate = new Date(item.expiryDate);
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    end.setHours(23, 59, 59, 999);
-    return item.expiryDate !== 'N/A' && expiryDate >= start && expiryDate <= end;
-  });
+  const chartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        position: 'bottom' as const,
+        labels: {
+          color: theme.palette.text.primary,
+        },
+      },
+    },
+  };
+
+  if (loading && inventory.length === 0) {
+    return (
+      <div style={{ 
+        padding: '16px', 
+        background: theme.palette.background.default, 
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center'
+      }}>
+        <LoadingSpinner 
+          loading={true} 
+          message="Loading inventory report..." 
+          size={48}
+        />
+      </div>
+    );
+  }
 
   return (
-    <div style={{ minHeight: '100vh', background: theme.palette.background.default, padding: 32 }}>
-      <header style={{ background: theme.palette.background.paper, boxShadow: theme.shadows[1], marginBottom: 24 }}>
-        <div style={{ maxWidth: '100%', padding: '16px 24px' }}>
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: theme.palette.text.primary }}>Management Inventory Reports</h1>
+    <div style={{ 
+      padding: '16px', 
+      background: theme.palette.background.default, 
+      minHeight: '100vh', 
+      width: '100%', 
+      maxWidth: '100vw', 
+      boxSizing: 'border-box' 
+    }}>
+      {/* Header */}
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'space-between', 
+        alignItems: 'center', 
+        marginBottom: 24 
+      }}>
+        <h2 style={{ 
+          fontSize: 24, 
+          fontWeight: 700, 
+          color: theme.palette.text.primary 
+        }}>
+          Inventory Reports
+        </h2>
+        <div style={{ display: 'flex', gap: 12 }}>
+          <button
+            onClick={fetchInventoryData}
+            disabled={loading}
+            style={{
+              padding: '8px 16px',
+              background: theme.palette.primary.main,
+              color: theme.palette.primary.contrastText,
+              border: 'none',
+              borderRadius: 8,
+              cursor: loading ? 'not-allowed' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              opacity: loading ? 0.7 : 1
+            }}
+          >
+            <RefreshCw style={{ width: 16, height: 16 }} />
+            Refresh
+          </button>
+          <button
+            onClick={handleExportExcel}
+            style={{
+              padding: '8px 16px',
+              background: theme.palette.success.main,
+              color: theme.palette.success.contrastText,
+              border: 'none',
+              borderRadius: 8,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8
+            }}
+          >
+            <FileSpreadsheet style={{ width: 16, height: 16 }} />
+            Export Excel
+          </button>
         </div>
-      </header>
-      <main style={{ maxWidth: '100%' }}>
-        {/* Filters */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {reportType === 'expiring' && (
-            <>
-              <div>
-                <label className="block text-sm font-medium text-[#4a5568] mb-1">Start Date</label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <Calendar className="h-5 w-5 text-[#a0aec0]" />
-                  </div>
-                  <input
-                    type="date"
-                    className="pl-10 pr-4 py-2 border border-[#e2e8f0] rounded-md w-full focus:ring-[#4c8bf5] focus:border-[#4c8bf5] bg-white text-[#4a5568]"
-                    value={startDate}
-                    onChange={(e) => setStartDate(e.target.value)}
-                    disabled={loading}
-                  />
+      </div>
+
+      {error && (
+        <div style={{
+          padding: 16,
+          background: theme.palette.error.light,
+          color: theme.palette.error.main,
+          borderRadius: 8,
+          marginBottom: 24,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8
+        }}>
+          <AlertCircle style={{ width: 20, height: 20 }} />
+          {error}
+        </div>
+      )}
+
+      {summary && (
+        <>
+          {/* Summary Cards */}
+          <div style={{ 
+            display: 'grid', 
+            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', 
+            gap: 24, 
+            marginBottom: 32 
+          }}>
+            <div style={{ 
+              background: theme.palette.background.paper, 
+              padding: 20, 
+              borderRadius: 12, 
+              boxShadow: theme.shadows[1], 
+              border: `1px solid ${theme.palette.divider}` 
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <p style={{ fontSize: 12, fontWeight: 500, color: theme.palette.text.secondary }}>Total Products</p>
+                  <p style={{ marginTop: 4, fontSize: 24, fontWeight: 700, color: theme.palette.text.primary }}>
+                    {formatNumber(summary.total_products)}
+                  </p>
+                </div>
+                <Package style={{ color: theme.palette.primary.main, width: 20, height: 20 }} />
+              </div>
+            </div>
+
+            <div style={{ 
+              background: theme.palette.background.paper, 
+              padding: 20, 
+              borderRadius: 12, 
+              boxShadow: theme.shadows[1], 
+              border: `1px solid ${theme.palette.divider}` 
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <p style={{ fontSize: 12, fontWeight: 500, color: theme.palette.text.secondary }}>Total Value</p>
+                  <p style={{ marginTop: 4, fontSize: 24, fontWeight: 700, color: theme.palette.success.main }}>
+                    {formatCurrency(summary.total_value)}
+                  </p>
+                </div>
+                <DollarSign style={{ color: theme.palette.success.main, width: 20, height: 20 }} />
+              </div>
+            </div>
+
+            <div style={{ 
+              background: theme.palette.background.paper, 
+              padding: 20, 
+              borderRadius: 12, 
+              boxShadow: theme.shadows[1], 
+              border: `1px solid ${theme.palette.divider}` 
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <p style={{ fontSize: 12, fontWeight: 500, color: theme.palette.text.secondary }}>Low Stock</p>
+                  <p style={{ marginTop: 4, fontSize: 24, fontWeight: 700, color: theme.palette.warning.main }}>
+                    {formatNumber(summary.low_stock_count)}
+                  </p>
+                </div>
+                <AlertCircle style={{ color: theme.palette.warning.main, width: 20, height: 20 }} />
+              </div>
+            </div>
+
+            <div style={{ 
+              background: theme.palette.background.paper, 
+              padding: 20, 
+              borderRadius: 12, 
+              boxShadow: theme.shadows[1], 
+              border: `1px solid ${theme.palette.divider}` 
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <p style={{ fontSize: 12, fontWeight: 500, color: theme.palette.text.secondary }}>Out of Stock</p>
+                  <p style={{ marginTop: 4, fontSize: 24, fontWeight: 700, color: theme.palette.error.main }}>
+                    {formatNumber(summary.out_of_stock_count)}
+                  </p>
+                </div>
+                <Clock style={{ color: theme.palette.error.main, width: 20, height: 20 }} />
+              </div>
+            </div>
+          </div>
+
+          {/* Charts Section */}
+          <div style={{ 
+            display: 'grid', 
+            gridTemplateColumns: '1fr 1fr', 
+            gap: 24, 
+            marginBottom: 32 
+          }}>
+            {/* Category Distribution */}
+            <div style={{ 
+              background: theme.palette.background.paper, 
+              padding: 24, 
+              borderRadius: 16, 
+              boxShadow: theme.shadows[1], 
+              border: `1px solid ${theme.palette.divider}` 
+            }}>
+              <h3 style={{ 
+                fontSize: 18, 
+                fontWeight: 600, 
+                color: theme.palette.text.primary, 
+                marginBottom: 16 
+              }}>
+                Category Distribution
+              </h3>
+              <div style={{ height: 300 }}>
+                <Doughnut data={categoryChartData} options={chartOptions} />
+              </div>
+            </div>
+
+            {/* Stock Status Distribution */}
+            <div style={{ 
+              background: theme.palette.background.paper, 
+              padding: 24, 
+              borderRadius: 16, 
+              boxShadow: theme.shadows[1], 
+              border: `1px solid ${theme.palette.divider}` 
+            }}>
+              <h3 style={{ 
+                fontSize: 18, 
+                fontWeight: 600, 
+                color: theme.palette.text.primary, 
+                marginBottom: 16 
+              }}>
+                Stock Status Overview
+              </h3>
+              <div style={{ 
+                display: 'flex', 
+                flexDirection: 'column', 
+                gap: 16 
+              }}>
+                <div style={{ 
+                  display: 'flex', 
+                  justifyContent: 'space-between', 
+                  alignItems: 'center',
+                  padding: 16,
+                  borderRadius: 8,
+                  background: theme.palette.success.light
+                }}>
+                  <span style={{ color: theme.palette.success.main, fontWeight: 600 }}>In Stock</span>
+                  <span style={{ color: theme.palette.success.main, fontWeight: 700 }}>
+                    {formatNumber(summary.total_products - summary.low_stock_count - summary.out_of_stock_count)}
+                  </span>
+                </div>
+                <div style={{ 
+                  display: 'flex', 
+                  justifyContent: 'space-between', 
+                  alignItems: 'center',
+                  padding: 16,
+                  borderRadius: 8,
+                  background: theme.palette.warning.light
+                }}>
+                  <span style={{ color: theme.palette.warning.main, fontWeight: 600 }}>Low Stock</span>
+                  <span style={{ color: theme.palette.warning.main, fontWeight: 700 }}>
+                    {formatNumber(summary.low_stock_count)}
+                  </span>
+                </div>
+                <div style={{ 
+                  display: 'flex', 
+                  justifyContent: 'space-between', 
+                  alignItems: 'center',
+                  padding: 16,
+                  borderRadius: 8,
+                  background: theme.palette.error.light
+                }}>
+                  <span style={{ color: theme.palette.error.main, fontWeight: 600 }}>Out of Stock</span>
+                  <span style={{ color: theme.palette.error.main, fontWeight: 700 }}>
+                    {formatNumber(summary.out_of_stock_count)}
+                  </span>
                 </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-[#4a5568] mb-1">End Date</label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <Calendar className="h-5 w-5 text-[#a0aec0]" />
-                  </div>
-                  <input
-                    type="date"
-                    className="pl-10 pr-4 py-2 border border-[#e2e8f0] rounded-md w-full focus:ring-[#4c8bf5] focus:border-[#4c8bf5] bg-white text-[#4a5568]"
-                    value={endDate}
-                    onChange={(e) => setEndDate(e.target.value)}
-                    disabled={loading}
-                  />
-                </div>
-              </div>
-            </>
-          )}
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Filters */}
+      <div style={{ 
+        background: theme.palette.background.paper, 
+        padding: 20, 
+        borderRadius: 12, 
+        boxShadow: theme.shadows[1], 
+        border: `1px solid ${theme.palette.divider}`,
+        marginBottom: 24
+      }}>
+        <div style={{ 
+          display: 'grid', 
+          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', 
+          gap: 16 
+        }}>
+          {/* Search */}
           <div>
-            <label className="block text-sm font-medium text-[#4a5568] mb-1">Search</label>
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <Search className="h-5 w-5 text-[#a0aec0]" />
-              </div>
+            <label style={{ 
+              display: 'block', 
+              fontSize: 12, 
+              fontWeight: 500, 
+              color: theme.palette.text.secondary,
+              marginBottom: 8
+            }}>
+              Search Products
+            </label>
+            <div style={{ position: 'relative' }}>
+              <Search style={{ 
+                position: 'absolute', 
+                left: 12, 
+                top: '50%', 
+                transform: 'translateY(-50%)',
+                color: theme.palette.text.secondary,
+                width: 16,
+                height: 16
+              }} />
               <input
                 type="text"
-                placeholder="Search items..."
-                className="pl-10 pr-4 py-2 border border-[#e2e8f0] rounded-md w-full focus:ring-[#4c8bf5] focus:border-[#4c8bf5] bg-white text-[#4a5568]"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                disabled={loading}
+                placeholder="Search by name, category, or batch..."
+                style={{
+                  width: '100%',
+                  padding: '8px 12px 8px 36px',
+                  border: `1px solid ${theme.palette.divider}`,
+                  borderRadius: 8,
+                  fontSize: 14,
+                  background: theme.palette.background.default,
+                  color: theme.palette.text.primary
+                }}
               />
             </div>
           </div>
+
+          {/* Category Filter */}
           <div>
-            <label className="block text-sm font-medium text-[#4a5568] mb-1">Category</label>
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <Filter className="h-5 w-5 text-[#a0aec0]" />
-              </div>
-              <select
-                className="pl-10 pr-4 py-2 border border-[#e2e8f0] rounded-md w-full focus:ring-[#4c8bf5] focus:border-[#4c8bf5] bg-white text-[#4a5568]"
-                value={categoryFilter}
-                onChange={(e) => setCategoryFilter(e.target.value)}
-                disabled={loading}
-              >
-                {categories.map((category) => (
-                  <option key={category} value={category}>
-                    {category}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <label style={{ 
+              display: 'block', 
+              fontSize: 12, 
+              fontWeight: 500, 
+              color: theme.palette.text.secondary,
+              marginBottom: 8
+            }}>
+              Category
+            </label>
+            <select
+              value={selectedCategory}
+              onChange={(e) => setSelectedCategory(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                border: `1px solid ${theme.palette.divider}`,
+                borderRadius: 8,
+                fontSize: 14,
+                background: theme.palette.background.default,
+                color: theme.palette.text.primary
+              }}
+            >
+              <option value="">All Categories</option>
+              {summary?.categories.map(category => (
+                <option key={category} value={category}>{category}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Stock Status Filter */}
+          <div>
+            <label style={{ 
+              display: 'block', 
+              fontSize: 12, 
+              fontWeight: 500, 
+              color: theme.palette.text.secondary,
+              marginBottom: 8
+            }}>
+              Stock Status
+            </label>
+            <select
+              value={selectedStockStatus}
+              onChange={(e) => setSelectedStockStatus(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                border: `1px solid ${theme.palette.divider}`,
+                borderRadius: 8,
+                fontSize: 14,
+                background: theme.palette.background.default,
+                color: theme.palette.text.primary
+              }}
+            >
+              <option value="">All Status</option>
+              <option value="normal">In Stock</option>
+              <option value="low">Low Stock</option>
+              <option value="out">Out of Stock</option>
+            </select>
+          </div>
+
+          {/* Clear Filters */}
+          <div style={{ display: 'flex', alignItems: 'end' }}>
+            <button
+              onClick={() => {
+                setSearchTerm('');
+                setSelectedCategory('');
+                setSelectedStockStatus('');
+              }}
+              style={{
+                padding: '8px 16px',
+                background: theme.palette.grey[500],
+                color: theme.palette.grey[100],
+                border: 'none',
+                borderRadius: 8,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8
+              }}
+            >
+              <X style={{ width: 16, height: 16 }} />
+              Clear Filters
+            </button>
           </div>
         </div>
+      </div>
 
-        {/* Loading and Error States */}
-        {loading && <div className="text-center text-[#4a5568]">Loading report data...</div>}
-        {error && <div className="text-center text-red-700 bg-red-50 p-3 rounded-md">{error}</div>}
+      {/* Inventory Table */}
+      <div style={{
+        background: theme.palette.background.paper,
+        borderRadius: 16,
+        boxShadow: theme.shadows[1],
+        border: `1px solid ${theme.palette.divider}`,
+        overflow: 'hidden'
+      }}>
+        <DataTable
+          columns={columns}
+          data={filteredInventory}
+          loading={loading}
+          emptyMessage="No inventory items found. Try adjusting your filters."
+        />
+      </div>
 
-        {/* Export Button */}
-        <div className="flex justify-end">
-          <button
-            onClick={handleExport}
-            className="flex items-center px-4 py-2 bg-[#4c8bf5] text-white rounded-md hover:bg-[#3b7ae0] disabled:bg-[#a0aec0]"
-            disabled={loading || filteredData.length === 0}
-          >
-            <Download className="h-5 w-5 mr-2" />
-            Export Report
-          </button>
-        </div>
-
-        {/* Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <div className="bg-white p-6 rounded-lg shadow border">
-            <div className="flex justify-between items-start">
-              <div>
-                <p className="text-sm font-medium text-[#4a5568]">Total Items</p>
-                <p className="mt-2 text-3xl font-semibold text-[#2d3748]">{totalItems}</p>
-              </div>
-              <div className="p-3 rounded-full bg-[#e6f0ff]">
-                <Package className="h-6 w-6 text-[#4c8bf5]" />
-              </div>
-            </div>
-          </div>
-          <div className="bg-white p-6 rounded-lg shadow border">
-            <div className="flex justify-between items-start">
-              <div>
-                <p className="text-sm font-medium text-[#4a5568]">Total Stock</p>
-                <p className="mt-2 text-3xl font-semibold text-[#2d3748]">{totalStock}</p>
-              </div>
-              <div className="p-3 rounded-full bg-[#e6ffe6]">
-                <BarChart3 className="h-6 w-6 text-[#38a169]" />
-              </div>
-            </div>
-          </div>
-          <div className="bg-white p-6 rounded-lg shadow border">
-            <div className="flex justify-between items-start">
-              <div>
-                <p className="text-sm font-medium text-[#4a5568]">Low Stock Items</p>
-                <p className="mt-2 text-3xl font-semibold text-[#2d3748]">{lowStockItems.length}</p>
-              </div>
-              <div className="p-3 rounded-full bg-[#fff7e6]">
-                <AlertTriangle className="h-6 w-6 text-[#d97706]" />
-              </div>
-            </div>
-          </div>
-          <div className="bg-white p-6 rounded-lg shadow border">
-            <div className="flex justify-between items-start">
-              <div>
-                <p className="text-sm font-medium text-[#4a5568]">Inventory Value</p>
-                <p className="mt-2 text-3xl font-semibold text-[#2d3748]">Tsh {totalValue.toFixed(2)}</p>
-              </div>
-              <div className="p-3 rounded-full bg-[#f3e8ff]">
-                <DollarSign className="h-6 w-6 text-[#805ad5]" />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Report Table */}
-        <div className="border border-[#e2e8f0] rounded-md overflow-hidden bg-white shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-[#e2e8f0]">
-              <thead className="bg-[#f7fafc]">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-[#4a5568] uppercase tracking-wider">Name</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-[#4a5568] uppercase tracking-wider">Category</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-[#4a5568] uppercase tracking-wider">Stock</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-[#4a5568] uppercase tracking-wider">Price</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-[#4a5568] uppercase tracking-wider">Total Value</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-[#4a5568] uppercase tracking-wider">Expiry Date</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-[#4a5568] uppercase tracking-wider">Batch No</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-[#4a5568] uppercase tracking-wider">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#e2e8f0]">
-                {filteredData.length > 0 ? (
-                  filteredData.map((item) => {
-                    const expiryDate = new Date(item.expiryDate);
-                    const today = new Date();
-                    const daysUntilExpiry = Math.ceil((expiryDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-
-                    let statusColor = '';
-                    let statusText = '';
-
-                    if (item.stock <= LOW_STOCK_THRESHOLD) {
-                      statusColor = 'bg-[#fff7e6] text-[#d97706]';
-                      statusText = 'Low Stock';
-                    } else if (item.expiryDate !== 'N/A' && daysUntilExpiry < 90) {
-                      statusColor = 'bg-[#fee2e2] text-[#dc2626]';
-                      statusText = `Expires in ${daysUntilExpiry} days`;
-                    } else {
-                      statusColor = 'bg-[#e6ffe6] text-[#38a169]';
-                      statusText = 'In Stock';
-                    }
-
-                    return (
-                      <tr key={item.id} className="hover:bg-[#edf2f7] transition-colors">
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-[#2d3748]">{item.name}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-[#4a5568]">{item.category}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-[#4a5568]">
-                          <span className={item.stock <= LOW_STOCK_THRESHOLD ? 'text-[#d97706] font-medium' : ''}>
-                            {item.stock} {item.unit}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-[#4a5568]">Tsh {item.price.toFixed(2)}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-[#4a5568]">{(item.stock * item.price).toFixed(2)}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-[#4a5568]">
-                          {item.expiryDate !== 'N/A' ? new Date(item.expiryDate).toLocaleDateString() : 'N/A'}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-[#4a5568]">{item.batchNumber}</td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${statusColor}`}>
-                            {statusText}
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  })
-                ) : (
-                  <tr>
-                    <td colSpan={8} className="px-6 py-4 text-center text-sm text-[#4a5568]">
-                      No data found for the selected criteria
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginTop: 24,
+          padding: 16,
+          background: theme.palette.background.paper,
+          borderRadius: 12,
+          boxShadow: theme.shadows[1],
+          border: `1px solid ${theme.palette.divider}`
+        }}>
+          <p style={{
+            fontSize: 14,
+            color: theme.palette.text.secondary,
+            margin: 0
+          }}>
+            Showing {((currentPage - 1) * itemsPerPage) + 1} to {Math.min(currentPage * itemsPerPage, totalItems)} of {totalItems} items
+          </p>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+              disabled={currentPage === 1}
+              style={{
+                padding: '8px 12px',
+                background: currentPage === 1 ? theme.palette.grey[300] : theme.palette.primary.main,
+                color: currentPage === 1 ? theme.palette.grey[600] : theme.palette.primary.contrastText,
+                border: 'none',
+                borderRadius: 6,
+                cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4
+              }}
+            >
+              <ChevronLeft style={{ width: 16, height: 16 }} />
+              Previous
+            </button>
+            <button
+              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+              disabled={currentPage === totalPages}
+              style={{
+                padding: '8px 12px',
+                background: currentPage === totalPages ? theme.palette.grey[300] : theme.palette.primary.main,
+                color: currentPage === totalPages ? theme.palette.grey[600] : theme.palette.primary.contrastText,
+                border: 'none',
+                borderRadius: 6,
+                cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4
+              }}
+            >
+              Next
+              <ChevronRight style={{ width: 16, height: 16 }} />
+            </button>
           </div>
         </div>
-
-        {/* Summary */}
-        <div className="bg-[#f7fafc] p-4 rounded-md border border-[#e2e8f0]">
-          <h3 className="text-md font-medium text-[#2d3748] mb-2">Report Summary</h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <p className="text-sm text-[#4a5568]">Total Items</p>
-              <p className="text-xl font-semibold text-[#2d3748]">{totalItems}</p>
-            </div>
-            <div>
-              <p className="text-sm text-[#4a5568]">Total Stock</p>
-              <p className="text-xl font-semibold text-[#2d3748]">{totalStock} units</p>
-            </div>
-            <div>
-              <p className="text-sm text-[#4a5568]">Total Value</p>
-              <p className="text-xl font-semibold text-[#2d3748]">Tsh {totalValue.toFixed(2)}</p>
-            </div>
-          </div>
-        </div>
-      </main>
+      )}
     </div>
   );
 };
 
-export default Reports;
+export default InventoryReports;

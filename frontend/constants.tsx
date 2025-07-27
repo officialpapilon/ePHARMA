@@ -13,10 +13,10 @@ export const numberFormat = (number: { toString: () => string }) => {
 };
 
 export const reportErrors = (
-  alert: { close: () => any; showError: (arg0: string) => void },
+  alert: { close: () => void; showError: (arg0: string) => void },
   errorBody: {
     message: string;
-    response: { status: string; data: unknown };
+    response: { status: string; data: Record<string, unknown> };
     request: never;
   }
 ) => {
@@ -35,7 +35,7 @@ export const reportErrors = (
       case 403:
         {
           const data = errorBody.response.data;
-          if (data.error) {
+          if (data?.error) {
             message = data.error;
           } else {
             message = "You don't have permission to perform this action.";
@@ -50,11 +50,15 @@ export const reportErrors = (
       case 422:
         {
           const data = errorBody.response.data;
-          if (data.error) {
+          if (data?.error) {
             message = data.error;
           } else {
-            const errors: unknown[] = [];
-            Object.keys(data).forEach((e, i) => errors.push(data[e][0]));
+            const errors: string[] = [];
+            Object.keys(data || {}).forEach((e) => {
+              if (data && data[e] && Array.isArray(data[e])) {
+                errors.push(data[e][0]);
+              }
+            });
             message = errors.join("\n");
           }
         }
@@ -62,7 +66,7 @@ export const reportErrors = (
     }
   } else if (errorBody.request) {
     message = "Unable to connect. Please check your network.";
-  }0
+  }
 
   if (alert) {
     alert.showError(message);

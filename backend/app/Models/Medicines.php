@@ -12,7 +12,7 @@ class Medicines extends Model
     protected $primaryKey = 'product_id';
 
     protected $fillable = [
-        'product_name', 'product_category', 'product_unit', 'product_price', 'created_by', 'updated_by'
+        'product_name', 'product_category', 'product_unit', 'product_price', 'unit_price', 'created_by', 'updated_by'
     ];
 }
 

@@ -33,14 +33,15 @@ const AddMedicineModal: React.FC<AddMedicineModalProps> = ({ isOpen, onClose, on
     setError('');
 
     try {
-      // Get user ID from localStorage (assuming it's stored as 'userId' or similar) or default to 1
-      const userId = parseInt(localStorage.getItem('userId') || '1', 10);
+      // Get user ID from localStorage
+      const user = JSON.parse(localStorage.getItem('user') || '{}');
+      const userId = user.id || 1;
 
       const response = await axios.post(`${API_BASE_URL}/api/medicines`, {
         ...formData,
         product_price: parseFloat(formData.product_price) || 0,
-        unit_price: parseFloat(formData.unit_price) || 0,
-        created_by: userId, // Ensure this is an integer
+        unit_price: formData.unit_price ? parseFloat(formData.unit_price) : null,
+        created_by: userId,
       }, {
         headers: {
           Authorization: `Bearer ${token}`,

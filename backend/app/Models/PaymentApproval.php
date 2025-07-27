@@ -38,4 +38,14 @@ class PaymentApproval extends Model
     {
         return $this->belongsTo(Patients::class, 'Patient_ID', 'id');
     }
+
+    public function customer()
+    {
+        return $this->belongsTo(Customer::class, 'Patient_ID', 'id');
+    }
+
+    public function cart()
+    {
+        return $this->belongsTo(Carts::class, 'dispense_id', 'dispense_id');
+    }
 }

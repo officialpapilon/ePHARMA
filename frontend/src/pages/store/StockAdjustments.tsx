@@ -1,384 +1,798 @@
-import React, { useState } from 'react';
-import { Search, Plus, Save, AlertTriangle } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { 
+  Plus, 
+  Search, 
+  RefreshCw, 
+  AlertCircle, 
+  CheckCircle, 
+  TrendingUp,
+  TrendingDown,
+  ArrowRight,
+  Package,
+  FilterList
+} from 'lucide-react';
+import { useTheme } from '@mui/material';
+import { API_BASE_URL } from '../../../constants';
+import DataTable from '../../components/common/DataTable/DataTable';
+import ProfessionalModal from '../../components/common/ProfessionalModal/ProfessionalModal';
+import ProductSelector from '../../components/common/ProductSelector/ProductSelector';
+import { TableColumn } from '../../../types';
 
-interface Product {
-  id: string;
-  name: string;
-  category: string;
-  stock: number;
-  unit: string;
-  batchNumber: string;
-  location: string;
-}
-
-interface AdjustmentRecord {
-  id: string;
-  productId: string;
-  productName: string;
-  previousStock: number;
-  adjustedStock: number;
-  adjustmentType: 'increase' | 'decrease';
+interface StockAdjustment {
+  id: number;
+  product_id: string;
+  batch_no: string;
+  adjustment_date: string;
+  adjustment_type: 'increase' | 'decrease' | 'transfer' | 'donation';
+  quantity_adjusted: number;
   reason: string;
-  date: string;
-  user: string;
-  location: string;
+  created_by: string;
+  created_at: string;
+  destination?: string;
+  recipient_name?: string;
+  recipient_contact?: string;
+  medicine?: {
+    product_name: string;
+    product_category: string;
+    product_price: string;
+  };
 }
 
-const StockAdjustment = () => {
+interface Medicine {
+  id: number;
+  product_id: string;
+  product_name: string;
+  current_quantity: number;
+  batch_no: string;
+  product_price: string;
+  product_category: string;
+  expire_date: string;
+}
+
+const StockAdjustments: React.FC = () => {
+  const theme = useTheme();
+  const [adjustments, setAdjustments] = useState<StockAdjustment[]>([]);
+  const [medicines, setMedicines] = useState<Medicine[]>([]);
+  const [filteredAdjustments, setFilteredAdjustments] = useState<StockAdjustment[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  
+  // Filters and search
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-  const [adjustmentType, setAdjustmentType] = useState<'increase' | 'decrease'>('increase');
-  const [adjustmentQuantity, setAdjustmentQuantity] = useState(0);
-  const [adjustmentReason, setAdjustmentReason] = useState('');
-  const [adjustmentHistory, setAdjustmentHistory] = useState<AdjustmentRecord[]>([
-    {
-      id: '1',
-      productId: '1',
-      productName: 'Paracetamol 500mg (Box of 100)',
-      previousStock: 480,
-      adjustedStock: 500,
-      adjustmentType: 'increase',
-      reason: 'Received additional stock from supplier',
-      date: '2025-02-25 09:30 AM',
-      user: 'John Doe',
-      location: 'Shelf A1'
-    },
-    {
-      id: '2',
-      productId: '3',
-      productName: 'Ibuprofen 400mg (Box of 100)',
-      previousStock: 420,
-      adjustedStock: 400,
-      adjustmentType: 'decrease',
-      reason: 'Damaged inventory',
-      date: '2025-02-24 02:15 PM',
-      user: 'Jane Smith',
-      location: 'Shelf A2'
-    },
-    {
-      id: '3',
-      productId: '5',
-      productName: 'Omeprazole 20mg (Box of 50)',
-      previousStock: 240,
-      adjustedStock: 250,
-      adjustmentType: 'increase',
-      reason: 'Inventory count correction',
-      date: '2025-02-23 11:45 AM',
-      user: 'John Doe',
-      location: 'Shelf D3'
+  const [typeFilter, setTypeFilter] = useState('');
+  
+  // Form states
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [selectedMedicine, setSelectedMedicine] = useState<Medicine | null>(null);
+  const [adjustmentData, setAdjustmentData] = useState({
+    product_id: '',
+    batch_no: '',
+    adjustment_type: 'increase' as const,
+    quantity_adjusted: 0,
+    reason: '',
+    destination: '',
+    recipient_name: '',
+    recipient_contact: ''
+  });
+
+  useEffect(() => {
+    fetchAdjustments();
+    fetchMedicines();
+  }, []);
+
+  useEffect(() => {
+    filterAdjustments();
+  }, [adjustments, searchTerm, typeFilter]);
+
+  const filterAdjustments = () => {
+    let filtered = adjustments;
+
+    if (searchTerm) {
+      filtered = filtered.filter(adj =>
+        adj.product_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        adj.batch_no.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        adj.reason.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        adj.medicine?.product_name.toLowerCase().includes(searchTerm.toLowerCase())
+      );
     }
-  ]);
 
-  // Mock data
-  const products: Product[] = [
-    { id: '1', name: 'Paracetamol 500mg (Box of 100)', stock: 500, category: 'Analgesics', unit: 'Boxes', batchNumber: 'B12345', location: 'Shelf A1' },
-    { id: '2', name: 'Amoxicillin 250mg (Box of 50)', stock: 300, category: 'Antibiotics', unit: 'Boxes', batchNumber: 'B23456', location: 'Shelf B2' },
-    { id: '3', name: 'Ibuprofen 400mg (Box of 100)', stock: 400, category: 'Analgesics', unit: 'Boxes', batchNumber: 'B34567', location: 'Shelf A2' },
-    { id: '4', name: 'Cetirizine 10mg (Box of 100)', stock: 350, category: 'Antihistamines', unit: 'Boxes', batchNumber: 'B45678', location: 'Shelf C1' },
-    { id: '5', name: 'Omeprazole 20mg (Box of 50)', stock: 250, category: 'Proton Pump Inhibitors', unit: 'Boxes', batchNumber: 'B56789', location: 'Shelf D3' },
-  ];
+    if (typeFilter) {
+      filtered = filtered.filter(adj => adj.adjustment_type === typeFilter);
+    }
 
-  const filteredProducts = products.filter(product => 
-    product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    product.category.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    product.batchNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    product.location.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+    setFilteredAdjustments(filtered);
+  };
 
-  const handleSaveAdjustment = () => {
-    if (selectedProduct && adjustmentQuantity > 0) {
-      const previousStock = selectedProduct.stock;
-      let adjustedStock = previousStock;
-      
-      if (adjustmentType === 'increase') {
-        adjustedStock = previousStock + adjustmentQuantity;
-      } else {
-        adjustedStock = Math.max(0, previousStock - adjustmentQuantity);
+  const fetchAdjustments = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) throw new Error('No authentication token found');
+
+      const response = await fetch(`${API_BASE_URL}/api/stock-adjustments`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch adjustments: ${response.status}`);
       }
-      
-      // In a real application, this would update the product stock in the database
-      
-      // Add to adjustment history
-      const newAdjustment: AdjustmentRecord = {
-        id: (adjustmentHistory.length + 1).toString(),
-        productId: selectedProduct.id,
-        productName: selectedProduct.name,
-        previousStock,
-        adjustedStock,
-        adjustmentType,
-        reason: adjustmentReason,
-        date: new Date().toLocaleString(),
-        user: 'Current User', // In a real app, this would be the logged-in user
-        location: selectedProduct.location
-      };
-      
-      setAdjustmentHistory([newAdjustment, ...adjustmentHistory]);
-      
-      // Reset form
-      setSelectedProduct(null);
-      setAdjustmentType('increase');
-      setAdjustmentQuantity(0);
-      setAdjustmentReason('');
-      
-      alert('Stock adjustment saved successfully!');
+
+      const result = await response.json();
+      if (result.success && Array.isArray(result.data)) {
+        setAdjustments(result.data);
+      } else {
+        setAdjustments([]);
+      }
+    } catch (err: any) {
+      console.error('Fetch adjustments error:', err);
+      setError(err.message);
+      setAdjustments([]);
+    } finally {
+      setLoading(false);
     }
   };
 
-  return (
-    <div className="space-y-6">
-      <h2 className="text-lg font-semibold">Stock Adjustment</h2>
+  const fetchMedicines = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) throw new Error('No authentication token found');
+
+      const response = await fetch(`${API_BASE_URL}/api/medicines-cache`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch medicines: ${response.status}`);
+      }
+
+      const result = await response.json();
+      if (result.success && Array.isArray(result.data)) {
+        setMedicines(result.data);
+      } else {
+        setMedicines([]);
+      }
+    } catch (err: any) {
+      console.error('Fetch medicines error:', err);
+      setError(err.message);
+      setMedicines([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCreateAdjustment = async () => {
+    if (!adjustmentData.product_id || !adjustmentData.quantity_adjusted || !adjustmentData.reason) {
+      setError('Please fill in all required fields');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) throw new Error('No authentication token found');
+
+      const user = JSON.parse(localStorage.getItem('user') || '{}');
       
-      {/* Stock Adjustment Form */}
-      <div className="bg-white p-6 rounded-lg border">
-        <h3 className="text-md font-medium mb-4">Adjust Stock</h3>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Product Selection */}
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Select Product
-              </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <Search className="h-5 w-5 text-gray-400" />
-                </div>
+      const payload = {
+        product_id: adjustmentData.product_id,
+        batch_no: adjustmentData.batch_no,
+        adjustment_date: new Date().toISOString().split('T')[0],
+        adjustment_type: adjustmentData.adjustment_type,
+        quantity_adjusted: adjustmentData.quantity_adjusted,
+        reason: adjustmentData.reason,
+        created_by: String(user.id || '1'),
+        destination: adjustmentData.destination,
+        recipient_name: adjustmentData.recipient_name,
+        recipient_contact: adjustmentData.recipient_contact
+      };
+
+      const response = await fetch(`${API_BASE_URL}/api/stock-adjustments`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to create adjustment: ${response.status} - ${errorText}`);
+      }
+
+      const result = await response.json();
+      if (result.success) {
+        await fetchAdjustments();
+        await fetchMedicines();
+        setIsAddModalOpen(false);
+        resetForm();
+        setSuccess('Stock adjustment created successfully');
+        setTimeout(() => setSuccess(null), 3000);
+      } else {
+        throw new Error(result.message || 'Failed to create adjustment');
+      }
+    } catch (err: any) {
+      console.error('Create adjustment error:', err);
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const resetForm = () => {
+    setAdjustmentData({
+      product_id: '',
+      batch_no: '',
+      adjustment_type: 'increase',
+      quantity_adjusted: 0,
+      reason: '',
+      destination: '',
+      recipient_name: '',
+      recipient_contact: ''
+    });
+    setSelectedMedicine(null);
+  };
+
+  const getAdjustmentIcon = (type: string) => {
+    switch (type) {
+      case 'increase':
+        return <TrendingUp style={{ color: theme.palette.success.main, width: 16, height: 16 }} />;
+      case 'decrease':
+        return <TrendingDown style={{ color: theme.palette.error.main, width: 16, height: 16 }} />;
+      case 'transfer':
+        return <ArrowRight style={{ color: theme.palette.info.main, width: 16, height: 16 }} />;
+      case 'donation':
+        return <Package style={{ color: theme.palette.warning.main, width: 16, height: 16 }} />;
+      default:
+        return <Package style={{ color: theme.palette.text.secondary, width: 16, height: 16 }} />;
+    }
+  };
+
+  const getAdjustmentColor = (type: string) => {
+    switch (type) {
+      case 'increase':
+        return theme.palette.success.main;
+      case 'decrease':
+        return theme.palette.error.main;
+      case 'transfer':
+        return theme.palette.info.main;
+      case 'donation':
+        return theme.palette.warning.main;
+      default:
+        return theme.palette.text.secondary;
+    }
+  };
+
+  // DataTable columns
+  const columns: TableColumn[] = [
+    {
+      key: 'adjustment_type',
+      header: 'Type',
+      sortable: true,
+      width: '12%',
+      render: (row: any) => {
+        if (!row) return '-';
+        return (
+          <div style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: 8 
+          }}>
+            {getAdjustmentIcon(row.adjustment_type)}
+            <span style={{ 
+              color: getAdjustmentColor(row.adjustment_type),
+              fontWeight: 500,
+              textTransform: 'capitalize'
+            }}>
+              {row.adjustment_type}
+            </span>
+          </div>
+        );
+      }
+    },
+    {
+      key: 'product_name',
+      header: 'Product',
+      sortable: true,
+      width: '18%',
+      render: (row: any) => {
+        if (!row) return '-';
+        return (
+          <div>
+            <div style={{ fontWeight: 500, color: theme.palette.text.primary }}>
+              {row.medicine?.product_name || row.product_id}
+            </div>
+            <div style={{ fontSize: 12, color: theme.palette.text.secondary }}>
+              {row.product_id}
+            </div>
+          </div>
+        );
+      }
+    },
+    {
+      key: 'batch_no',
+      header: 'Batch',
+      sortable: true,
+      width: '10%'
+    },
+    {
+      key: 'quantity_adjusted',
+      header: 'Quantity',
+      sortable: true,
+      width: '10%',
+      render: (row: any) => {
+        if (!row) return '-';
+        const color = row.adjustment_type === 'increase' ? theme.palette.success.main : theme.palette.error.main;
+        const prefix = row.adjustment_type === 'increase' ? '+' : '-';
+        return (
+          <span style={{ 
+            color: color,
+            fontWeight: 600
+          }}>
+            {prefix}{row.quantity_adjusted}
+          </span>
+        );
+      }
+    },
+    {
+      key: 'created_at',
+      header: 'Date',
+      sortable: true,
+      width: '12%',
+      render: (row: any) => {
+        if (!row) return '-';
+        return row.created_at ? new Date(row.created_at).toLocaleDateString() : '-';
+      }
+    }
+  ];
+
+  return (
+    <div style={{ 
+      padding: '16px', 
+      background: theme.palette.background.default, 
+      minHeight: '100vh', 
+      width: '100%', 
+      maxWidth: '100vw', 
+      boxSizing: 'border-box' 
+    }}>
+      {/* Header */}
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'space-between', 
+        alignItems: 'center', 
+        marginBottom: 24 
+      }}>
+        <div>
+          <h2 style={{ 
+            fontSize: 24, 
+            fontWeight: 700, 
+            color: theme.palette.text.primary,
+            margin: '0 0 8px 0'
+          }}>
+            Stock Adjustments
+          </h2>
+          <p style={{ 
+            fontSize: 14, 
+            color: theme.palette.text.secondary,
+            margin: 0
+          }}>
+            Manage stock adjustments, transfers, and donations
+          </p>
+        </div>
+        <div style={{ display: 'flex', gap: 12 }}>
+          <button
+            onClick={fetchAdjustments}
+            disabled={loading}
+            style={{
+              padding: '8px 16px',
+              background: theme.palette.primary.main,
+              color: theme.palette.primary.contrastText,
+              border: 'none',
+              borderRadius: 8,
+              cursor: loading ? 'not-allowed' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              opacity: loading ? 0.7 : 1
+            }}
+          >
+            <RefreshCw style={{ width: 16, height: 16 }} />
+            Refresh
+          </button>
+          <button
+            onClick={() => setIsAddModalOpen(true)}
+            style={{
+              padding: '8px 16px',
+              background: theme.palette.success.main,
+              color: theme.palette.success.contrastText,
+              border: 'none',
+              borderRadius: 8,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8
+            }}
+          >
+            <Plus style={{ width: 16, height: 16 }} />
+            New Adjustment
+          </button>
+        </div>
+      </div>
+
+      {/* Success/Error Messages */}
+      {success && (
+        <div style={{
+          background: theme.palette.success.light,
+          border: `1px solid ${theme.palette.success.main}`,
+          color: theme.palette.success.dark,
+          padding: 12,
+          borderRadius: 8,
+          marginBottom: 16,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8
+        }}>
+          <CheckCircle style={{ width: 16, height: 16 }} />
+          {success}
+        </div>
+      )}
+
+      {error && (
+        <div style={{
+          background: theme.palette.error.light,
+          border: `1px solid ${theme.palette.error.main}`,
+          color: theme.palette.error.dark,
+          padding: 12,
+          borderRadius: 8,
+          marginBottom: 16,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8
+        }}>
+          <AlertCircle style={{ width: 16, height: 16 }} />
+          {error}
+        </div>
+      )}
+
+      {/* Filters */}
+      <div style={{ 
+        background: theme.palette.background.paper, 
+        padding: 24, 
+        borderRadius: 16, 
+        boxShadow: theme.shadows[1], 
+        marginBottom: 24,
+        border: `1px solid ${theme.palette.divider}`
+      }}>
+        <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+          {/* Search */}
+          <div style={{ flex: 1, minWidth: 200 }}>
+            <div style={{ position: 'relative' }}>
+              <Search style={{ 
+                position: 'absolute', 
+                left: 12, 
+                top: '50%', 
+                transform: 'translateY(-50%)', 
+                color: theme.palette.text.secondary,
+                width: 16,
+                height: 16
+              }} />
+              <input
+                type="text"
+                placeholder="Search adjustments..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '12px 12px 12px 40px',
+                  border: `1px solid ${theme.palette.divider}`,
+                  borderRadius: 8,
+                  background: theme.palette.background.default,
+                  color: theme.palette.text.primary,
+                  fontSize: 14
+                }}
+              />
+            </div>
+          </div>
+
+          {/* Type Filter */}
+          <div style={{ minWidth: 150 }}>
+            <select
+              value={typeFilter}
+              onChange={(e) => setTypeFilter(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '12px',
+                border: `1px solid ${theme.palette.divider}`,
+                borderRadius: 8,
+                background: theme.palette.background.default,
+                color: theme.palette.text.primary,
+                fontSize: 14
+              }}
+            >
+              <option value="">All Types</option>
+              <option value="increase">Increase</option>
+              <option value="decrease">Decrease</option>
+              <option value="transfer">Transfer</option>
+              <option value="donation">Donation</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Results Summary */}
+        <div style={{ 
+          marginTop: 16, 
+          padding: '12px 0', 
+          borderTop: `1px solid ${theme.palette.divider}`,
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center'
+        }}>
+          <p style={{ 
+            fontSize: 14, 
+            color: theme.palette.text.secondary,
+            margin: 0
+          }}>
+            Showing {filteredAdjustments.length} of {adjustments.length} adjustments
+          </p>
+        </div>
+      </div>
+
+      {/* Adjustments Table */}
+      <div style={{ 
+        background: theme.palette.background.paper, 
+        borderRadius: 16, 
+        boxShadow: theme.shadows[1],
+        border: `1px solid ${theme.palette.divider}`,
+        overflow: 'hidden'
+      }}>
+        <DataTable
+          columns={columns}
+          data={filteredAdjustments}
+          loading={loading}
+          emptyMessage="No adjustments found. Create your first adjustment to get started."
+        />
+      </div>
+
+      {/* Add Adjustment Modal */}
+      {isAddModalOpen && (
+        <ProfessionalModal
+          open={isAddModalOpen}
+          onClose={() => {
+            setIsAddModalOpen(false);
+            resetForm();
+          }}
+          title="New Stock Adjustment"
+          onSubmit={handleCreateAdjustment}
+          loading={loading}
+          submitText="Create Adjustment"
+        >
+          <ProductSelector
+            products={medicines}
+            selectedProduct={selectedMedicine}
+            onSelect={(product) => {
+              setAdjustmentData(prev => ({ ...prev, product_id: product.product_id }));
+              setSelectedMedicine(product);
+            }}
+            placeholder="Select a product"
+          />
+          <div>
+            <label style={{ 
+              display: 'block', 
+              marginBottom: 8, 
+              fontWeight: 500, 
+              color: theme.palette.text.primary 
+            }}>
+              Batch Number *
+            </label>
+            <input
+              type="text"
+              value={adjustmentData.batch_no}
+              onChange={(e) => setAdjustmentData(prev => ({ ...prev, batch_no: e.target.value }))}
+              placeholder="Enter batch number"
+              style={{
+                width: '100%',
+                padding: '12px',
+                border: `1px solid ${theme.palette.divider}`,
+                borderRadius: 8,
+                background: theme.palette.background.default,
+                color: theme.palette.text.primary,
+                fontSize: 14
+              }}
+            />
+          </div>
+
+          <div>
+            <label style={{ 
+              display: 'block', 
+              marginBottom: 8, 
+              fontWeight: 500, 
+              color: theme.palette.text.primary 
+            }}>
+              Adjustment Type *
+            </label>
+            <select
+              value={adjustmentData.adjustment_type}
+              onChange={(e) => setAdjustmentData(prev => ({ 
+                ...prev, 
+                adjustment_type: e.target.value as any 
+              }))}
+              style={{
+                width: '100%',
+                padding: '12px',
+                border: `1px solid ${theme.palette.divider}`,
+                borderRadius: 8,
+                background: theme.palette.background.default,
+                color: theme.palette.text.primary,
+                fontSize: 14
+              }}
+            >
+              <option value="increase">Increase Stock</option>
+              <option value="decrease">Decrease Stock</option>
+              <option value="transfer">Transfer to Another Location</option>
+              <option value="donation">Donation</option>
+            </select>
+          </div>
+
+          <div>
+            <label style={{ 
+              display: 'block', 
+              marginBottom: 8, 
+              fontWeight: 500, 
+              color: theme.palette.text.primary 
+            }}>
+              Quantity *
+            </label>
+            <input
+              type="number"
+              min="1"
+              value={adjustmentData.quantity_adjusted}
+              onChange={(e) => setAdjustmentData(prev => ({ 
+                ...prev, 
+                quantity_adjusted: parseInt(e.target.value) || 0 
+              }))}
+              placeholder="Enter quantity"
+              style={{
+                width: '100%',
+                padding: '12px',
+                border: `1px solid ${theme.palette.divider}`,
+                borderRadius: 8,
+                background: theme.palette.background.default,
+                color: theme.palette.text.primary,
+                fontSize: 14
+              }}
+            />
+          </div>
+
+          <div>
+            <label style={{ 
+              display: 'block', 
+              marginBottom: 8, 
+              fontWeight: 500, 
+              color: theme.palette.text.primary 
+            }}>
+              Reason *
+            </label>
+            <textarea
+              value={adjustmentData.reason}
+              onChange={(e) => setAdjustmentData(prev => ({ ...prev, reason: e.target.value }))}
+              placeholder="Enter reason for adjustment"
+              rows={3}
+              style={{
+                width: '100%',
+                padding: '12px',
+                border: `1px solid ${theme.palette.divider}`,
+                borderRadius: 8,
+                background: theme.palette.background.default,
+                color: theme.palette.text.primary,
+                fontSize: 14,
+                resize: 'vertical'
+              }}
+            />
+          </div>
+
+          {/* Conditional fields for transfer/donation */}
+          {(adjustmentData.adjustment_type === 'transfer' || adjustmentData.adjustment_type === 'donation') && (
+            <>
+              <div>
+                <label style={{ 
+                  display: 'block', 
+                  marginBottom: 8, 
+                  fontWeight: 500, 
+                  color: theme.palette.text.primary 
+                }}>
+                  {adjustmentData.adjustment_type === 'transfer' ? 'Destination' : 'Recipient Organization'}
+                </label>
                 <input
                   type="text"
-                  placeholder="Search products..."
-                  className="pl-10 pr-4 py-2 border border-gray-300 rounded-md w-full focus:ring-indigo-500 focus:border-indigo-500"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
+                  value={adjustmentData.destination}
+                  onChange={(e) => setAdjustmentData(prev => ({ ...prev, destination: e.target.value }))}
+                  placeholder={adjustmentData.adjustment_type === 'transfer' ? 'Enter destination' : 'Enter organization name'}
+                  style={{
+                    width: '100%',
+                    padding: '12px',
+                    border: `1px solid ${theme.palette.divider}`,
+                    borderRadius: 8,
+                    background: theme.palette.background.default,
+                    color: theme.palette.text.primary,
+                    fontSize: 14
+                  }}
                 />
               </div>
-            </div>
-            
-            <div className="border rounded-md max-h-60 overflow-y-auto">
-              {filteredProducts.length > 0 ? (
-                <ul className="divide-y divide-gray-200">
-                  {filteredProducts.map(product => (
-                    <li key={product.id}>
-                      <button
-                        className={`w-full px-4 py-3 text-left hover:bg-gray-50 ${
-                          selectedProduct?.id === product.id ? 'bg-indigo-50' : ''
-                        }`}
-                        onClick={() => setSelectedProduct(product)}
-                      >
-                        <div className="flex justify-between">
-                          <div>
-                            <p className="font-medium">{product.name}</p>
-                            <p className="text-xs text-gray-500">{product.category}</p>
-                          </div>
-                          <div className="text-right">
-                            <p className="font-bold">{product.stock} {product.unit}</p>
-                            <p className="text-xs text-gray-500">Location: {product.location}</p>
-                          </div>
-                        </div>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <div className="p-4 text-center text-gray-500">No products found</div>
-              )}
-            </div>
-          </div>
-          
-          {/* Adjustment Details */}
-          <div className="space-y-4">
-            {selectedProduct ? (
-              <>
-                <div className="p-4 bg-indigo-50 rounded-md">
-                  <h4 className="font-medium">{selectedProduct.name}</h4>
-                  <p className="text-sm text-gray-600">Current Stock: {selectedProduct.stock} {selectedProduct.unit}</p>
-                  <p className="text-sm text-gray-600">Batch: {selectedProduct.batchNumber}</p>
-                  <p className="text-sm text-gray-600">Location: {selectedProduct.location}</p>
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Adjustment Type
-                  </label>
-                  <div className="flex space-x-4">
-                    <div className="flex items-center">
-                      <input
-                        type="radio"
-                        id="increase"
-                        name="adjustmentType"
-                        value="increase"
-                        checked={adjustmentType === 'increase'}
-                        onChange={() => setAdjustmentType('increase')}
-                        className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300"
-                      />
-                      <label htmlFor="increase" className="ml-2 text-sm text-gray-700">
-                        Increase
-                      </label>
-                    </div>
-                    <div className="flex items-center">
-                      <input
-                        type="radio"
-                        id="decrease"
-                        name="adjustmentType"
-                        value="decrease"
-                        checked={adjustmentType === 'decrease'}
-                        onChange={() => setAdjustmentType('decrease')}
-                        className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300"
-                      />
-                      <label htmlFor="decrease" className="ml-2 text-sm text-gray-700">
-                        Decrease
-                      </label>
-                    </div>
-                  </div>
-                </div>
-                
-                <div>
-                  <label htmlFor="quantity" className="block text-sm font-medium text-gray-700 mb-1">
-                    Quantity
-                  </label>
-                  <input
-                    type="number"
-                    id="quantity"
-                    min="1"
-                    value={adjustmentQuantity}
-                    onChange={(e) => setAdjustmentQuantity(parseInt(e.target.value) || 0)}
-                    className="border border-gray-300 rounded-md px-3 py-2 w-full focus:ring-indigo-500 focus:border-indigo-500"
-                  />
-                </div>
-                
-                <div>
-                  <label htmlFor="reason" className="block text-sm font-medium text-gray-700 mb-1">
-                    Reason for Adjustment
-                  </label>
-                  <textarea
-                    id="reason"
-                    rows={3}
-                    value={adjustmentReason}
-                    onChange={(e) => setAdjustmentReason(e.target.value)}
-                    className="border border-gray-300 rounded-md px-3 py-2 w-full focus:ring-indigo-500 focus:border-indigo-500"
-                    placeholder="Enter reason for adjustment"
-                  ></textarea>
-                </div>
-                
-                <div className="flex justify-end">
-                  <button
-                    onClick={handleSaveAdjustment}
-                    disabled={!selectedProduct || adjustmentQuantity <= 0 || !adjustmentReason}
-                    className="flex items-center px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:bg-gray-400"
-                  >
-                    <Save className="h-5 w-5 mr-2" />
-                    Save Adjustment
-                  </button>
-                </div>
-                
-                {adjustmentType === 'decrease' && selectedProduct.stock < adjustmentQuantity && (
-                  <div className="flex items-start p-4 bg-yellow-50 rounded-md">
-                    <AlertTriangle className="text-yellow-500 mr-3 flex-shrink-0" />
-                    <div>
-                      <h3 className="font-medium text-yellow-800">Warning</h3>
-                      <p className="text-sm text-yellow-700">
-                        The adjustment quantity exceeds the current stock. The stock will be reduced to 0.
-                      </p>
-                    </div>
-                  </div>
-                )}
-              </>
-            ) : (
-              <div className="flex flex-col items-center justify-center p-12 bg-gray-50 rounded-lg border border-dashed border-gray-300">
-                <Plus className="h-12 w-12 text-gray-400 mb-4" />
-                <h3 className="text-lg font-medium text-gray-900">No Product Selected</h3>
-                <p className="text-gray-500 mt-2 text-center">
-                  Select a product from the list to adjust its stock.
-                </p>
+
+              <div>
+                <label style={{ 
+                  display: 'block', 
+                  marginBottom: 8, 
+                  fontWeight: 500, 
+                  color: theme.palette.text.primary 
+                }}>
+                  Contact Person
+                </label>
+                <input
+                  type="text"
+                  value={adjustmentData.recipient_name}
+                  onChange={(e) => setAdjustmentData(prev => ({ ...prev, recipient_name: e.target.value }))}
+                  placeholder="Enter contact person name"
+                  style={{
+                    width: '100%',
+                    padding: '12px',
+                    border: `1px solid ${theme.palette.divider}`,
+                    borderRadius: 8,
+                    background: theme.palette.background.default,
+                    color: theme.palette.text.primary,
+                    fontSize: 14
+                  }}
+                />
               </div>
-            )}
-          </div>
-        </div>
-      </div>
-      
-      {/* Adjustment History */}
-      <div>
-        <h3 className="text-md font-medium mb-4">Adjustment History</h3>
-        <div className="border rounded-md overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Date
-                  </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Product
-                  </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Location
-                  </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Previous Stock
-                  </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Adjusted Stock
-                  </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Adjustment
-                  </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Reason
-                  </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    User
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {adjustmentHistory.length > 0 ? (
-                  adjustmentHistory.map(record => (
-                    <tr key={record.id}>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {record.date}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                        {record.productName}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {record.location}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {record.previousStock}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {record.adjustedStock}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                          record.adjustmentType === 'increase' 
-                            ? 'bg-green-100 text-green-800' 
-                            : 'bg-red-100 text-red-800'
-                        }`}>
-                          {record.adjustmentType === 'increase' ? 'Increase' : 'Decrease'}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-500">
-                        {record.reason}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {record.user}
-                      </td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan={8} className="px-6 py-4 text-center text-sm text-gray-500">
-                      No adjustment history found
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
+
+              <div>
+                <label style={{ 
+                  display: 'block', 
+                  marginBottom: 8, 
+                  fontWeight: 500, 
+                  color: theme.palette.text.primary 
+                }}>
+                  Contact Number
+                </label>
+                <input
+                  type="text"
+                  value={adjustmentData.recipient_contact}
+                  onChange={(e) => setAdjustmentData(prev => ({ ...prev, recipient_contact: e.target.value }))}
+                  placeholder="Enter contact number"
+                  style={{
+                    width: '100%',
+                    padding: '12px',
+                    border: `1px solid ${theme.palette.divider}`,
+                    borderRadius: 8,
+                    background: theme.palette.background.default,
+                    color: theme.palette.text.primary,
+                    fontSize: 14
+                  }}
+                />
+              </div>
+            </>
+          )}
+        </ProfessionalModal>
+      )}
     </div>
   );
 };
 
-export default StockAdjustment;
+export default StockAdjustments;

@@ -130,7 +130,3 @@ class MedicinesController extends Controller
         }
     }
 }
-
-        return response()->noContent();
-    }
-}

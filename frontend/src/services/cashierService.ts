@@ -2,30 +2,30 @@
 import { Transaction, Receipt, CashierReport } from '../types/cashier';
 import { Item } from '../types/item';
 import { Customer } from '../types/customer';
+import { API_BASE_URL } from '../constants';
 
-export const fetchTransactions = async (): Promise<Transaction[]> => {
-  const response = await fetch('http://127.0.0.1:8000/api/cashier/transactions');
-  if (!response.ok) throw new Error('Failed to fetch transactions');
+export const fetchTransactions = async () => {
+  const response = await fetch(`${API_BASE_URL}/api/cashier/transactions`);
   return response.json();
 };
 
-export const createTransaction = async (transaction: Transaction): Promise<void> => {
-  const response = await fetch('http://127.0.0.1:8000/api/cashier/transactions', {
+export const createTransaction = async (transactionData: any) => {
+  const response = await fetch(`${API_BASE_URL}/api/cashier/transactions`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(transaction),
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(transactionData),
   });
-  if (!response.ok) throw new Error('Failed to create transaction');
-};
-
-export const generateReceipt = async (transactionId: string): Promise<Receipt> => {
-  const response = await fetch(`http://127.0.0.1:8000/api/cashier/receipts/${transactionId}`);
-  if (!response.ok) throw new Error('Failed to generate receipt');
   return response.json();
 };
 
-export const generateSalesReport = async (startDate: string, endDate: string): Promise<CashierReport> => {
-  const response = await fetch(`http://127.0.0.1:8000/api/cashier/reports/sales?start=${startDate}&end=${endDate}`);
-  if (!response.ok) throw new Error('Failed to generate sales report');
+export const generateReceipt = async (transactionId: number) => {
+  const response = await fetch(`${API_BASE_URL}/api/cashier/receipts/${transactionId}`);
+  return response.json();
+};
+
+export const fetchSalesReport = async (startDate: string, endDate: string) => {
+  const response = await fetch(`${API_BASE_URL}/api/cashier/reports/sales?start=${startDate}&end=${endDate}`);
   return response.json();
 };

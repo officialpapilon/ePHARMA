@@ -113,6 +113,10 @@ const DataTable: React.FC<DataTableProps> = ({
   const allActions = [...defaultActions, ...actions];
 
   const renderCell = (row: any, column: TableColumn) => {
+    if (!row) {
+      return <Typography variant="body2" color="textSecondary">-</Typography>;
+    }
+
     if (column.render) {
       return column.render(row);
     }
@@ -133,15 +137,15 @@ const DataTable: React.FC<DataTableProps> = ({
       );
     }
 
-    if (column.key.includes('date') || column.key.includes('_at')) {
-      return new Date(value).toLocaleDateString();
+    if (typeof value === 'number') {
+      return <Typography variant="body2">{value.toLocaleString()}</Typography>;
     }
 
-    if (column.key.includes('price') || column.key.includes('amount')) {
-      return `Tsh ${parseFloat(value).toFixed(2)}`;
+    if (typeof value === 'string') {
+      return <Typography variant="body2">{value}</Typography>;
     }
 
-    return value;
+    return <Typography variant="body2">{String(value)}</Typography>;
   };
 
   if (loading) {

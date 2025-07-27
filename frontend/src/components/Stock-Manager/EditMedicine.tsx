@@ -33,9 +33,15 @@ const EditMedicineModal: React.FC<EditMedicineModalProps> = ({ isOpen, onClose, 
   };
 
   const handleSave = async () => {
+    // Get user ID from localStorage
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    const userId = user.id || 1;
+
     const updatedMedicine = {
       ...formData,
       product_price: parseFloat(formData.product_price.toString()) || 0,
+      unit_price: formData.unit_price ? parseFloat(formData.unit_price.toString()) : null,
+      updated_by: userId
     };
 
     try {

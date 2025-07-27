@@ -1,20 +1,57 @@
-import React, { useState } from 'react';
-import { Search, Plus, Trash2, Check, CreditCard, DollarSign, Smartphone } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Search, Plus, Trash2, ShoppingCart, CreditCard, DollarSign, AlertTriangle } from 'lucide-react';
+import { API_BASE_URL } from '../../../constants';
+import { wholesaleOrdersApi } from '../../services/wholesaleService';
+import LoadingSpinner from '../../components/common/LoadingSpinner/LoadingSpinner';
+import {
+  Box,
+  Typography,
+  Paper,
+  TextField,
+  Button,
+  List,
+  ListItem,
+  ListItemText,
+  Divider,
+  Chip,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Alert,
+  MenuItem,
+  InputAdornment,
+  CircularProgress,
+  alpha,
+} from '@mui/material';
+import { CheckCircle } from '@mui/icons-material';
 
 interface Customer {
-  id: string;
-  name: string;
-  phone: string;
+  id: number;
+  customer_code: string;
+  business_name: string;
+  contact_person: string;
+  phone_number: string;
   email: string;
-  type: string;
+  address: string;
+  city: string;
+  state: string;
+  customer_type: string;
+  credit_limit: string;
+  current_balance: string;
+  payment_terms: string;
+  status: string;
 }
 
 interface Product {
   id: string;
-  name: string;
-  stock: number;
-  price: number;
-  category: string;
+  product_id: string;
+  product_name: string;
+  current_quantity: number;
+  product_price: number;
+  product_category: string;
+  product_unit: string;
+  batch_no: string;
 }
 
 interface CartItem {
@@ -23,76 +60,169 @@ interface CartItem {
   name: string;
   quantity: number;
   price: number;
+  unit: string;
+  batch_no: string;
+}
+
+interface ApiProductItem {
+  id?: string | number;
+  product_id?: string | number;
+  product_name?: string;
+  current_quantity?: string | number;
+  product_price?: string | number;
+  product_category?: string;
+  product_unit?: string;
+  batch_no?: string;
 }
 
 const Pos = () => {
-  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [productSearchTerm, setProductSearchTerm] = useState('');
-  const [cart, setCart] = useState<CartItem[]>([]);
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [quantity, setQuantity] = useState(1);
+  const [cart, setCart] = useState<CartItem[]>([]);
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'mobile'>('cash');
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [amountPaid, setAmountPaid] = useState('');
   const [change, setChange] = useState(0);
+  const [taxRate, setTaxRate] = useState(7); // Default 7% tax rate
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
-  // Mock data
-  const customers: Customer[] = [
-    { id: '1', name: 'MediCare Hospital', phone: '123-456-7890', email: 'info@medicare.com', type: 'Hospital' },
-    { id: '2', name: 'City Clinic', phone: '234-567-8901', email: 'contact@cityclinic.com', type: 'Clinic' },
-    { id: '3', name: 'HealthPlus Pharmacy', phone: '345-678-9012', email: 'orders@healthplus.com', type: 'Pharmacy' },
-    { id: '4', name: 'Wellness Center', phone: '456-789-0123', email: 'wellness@center.com', type: 'Clinic' },
-    { id: '5', name: 'Community Health', phone: '567-890-1234', email: 'community@health.org', type: 'Non-profit' },
-  ];
+  useEffect(() => {
+    fetchCustomers();
+    fetchProducts();
+  }, []);
 
-  const products: Product[] = [
-    { id: '1', name: 'Paracetamol 500mg (Box of 100)', stock: 500, price: 25.99, category: 'Analgesics' },
-    { id: '2', name: 'Amoxicillin 250mg (Box of 50)', stock: 300, price: 45.50, category: 'Antibiotics' },
-    { id: '3', name: 'Ibuprofen 400mg (Box of 100)', stock: 400, price: 30.25, category: 'Analgesics' },
-    { id: '4', name: 'Cetirizine 10mg (Box of 100)', stock: 350, price: 28.75, category: 'Antihistamines' },
-    { id: '5', name: 'Omeprazole 20mg (Box of 50)', stock: 250, price: 42.00, category: 'Proton Pump Inhibitors' },
-    { id: '6', name: 'Metformin 500mg (Box of 100)', stock: 320, price: 35.50, category: 'Antidiabetics' },
-    { id: '7', name: 'Atorvastatin 10mg (Box of 30)', stock: 280, price: 48.75, category: 'Statins' },
-    { id: '8', name: 'Losartan 50mg (Box of 50)', stock: 220, price: 39.99, category: 'Antihypertensives' },
-    { id: '9', name: 'Salbutamol Inhaler (Box of 10)', stock: 150, price: 65.25, category: 'Bronchodilators' },
-    { id: '10', name: 'Fluoxetine 20mg (Box of 30)', stock: 180, price: 52.50, category: 'Antidepressants' },
-  ];
+  const fetchCustomers = async () => {
+    try {
+      setLoading(true);
+      const token = localStorage.getItem('token');
+      if (!token) throw new Error('No authentication token found');
+
+      const response = await fetch(`${API_BASE_URL}/api/wholesale/customers`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch customers: ${response.status}`);
+      }
+
+      const result = await response.json();
+      
+      if (result.success && Array.isArray(result.data)) {
+        setCustomers(result.data);
+      } else {
+        setError('Failed to fetch customers');
+      }
+    } catch (err) {
+      console.error('Fetch customers error:', err);
+      setError('Failed to fetch customers');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchProducts = async () => {
+    try {
+      setLoading(true);
+      const token = localStorage.getItem('token');
+      if (!token) throw new Error('No authentication token found');
+
+      const response = await fetch(`${API_BASE_URL}/api/medicines-cache?all=true`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch products: ${response.status}`);
+      }
+
+      const result = await response.json();
+      
+      if (result.success && Array.isArray(result.data)) {
+        const mappedProducts = result.data.map((item: ApiProductItem) => ({
+          id: (item.id?.toString() || item.product_id?.toString()) || '',
+          product_id: item.product_id?.toString() || '',
+          product_name: item.product_name || 'Unknown Product',
+          current_quantity: parseInt(item.current_quantity as string) || 0,
+          product_price: parseFloat(item.product_price as string) || 0,
+          product_category: item.product_category || 'Unknown Category',
+          product_unit: 'Units', // Default value since product_unit doesn't exist in API
+          batch_no: item.batch_no || 'BATCH-001', // Default batch number - should be improved
+        }));
+        setProducts(mappedProducts);
+      } else {
+        throw new Error('Invalid response format from API');
+      }
+    } catch (err) {
+      console.error('Fetch products error:', err);
+      setError('Failed to fetch products');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const filteredCustomers = customers.filter(customer => 
-    customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    customer.phone.includes(searchTerm) ||
+    customer.business_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    customer.phone_number.includes(searchTerm) ||
     customer.email.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const filteredProducts = products.filter(product => 
-    product.name.toLowerCase().includes(productSearchTerm.toLowerCase()) ||
-    product.category.toLowerCase().includes(productSearchTerm.toLowerCase())
+    product.product_name.toLowerCase().includes(productSearchTerm.toLowerCase()) ||
+    product.product_category.toLowerCase().includes(productSearchTerm.toLowerCase())
   );
 
   const addToCart = () => {
     if (selectedProduct && quantity > 0) {
+      if (quantity > selectedProduct.current_quantity) {
+        setError(`Only ${selectedProduct.current_quantity} ${selectedProduct.product_unit} available in stock`);
+        return;
+      }
+
       const existingItemIndex = cart.findIndex(item => item.productId === selectedProduct.id);
       
       if (existingItemIndex >= 0) {
         // Update existing item
         const updatedCart = [...cart];
-        updatedCart[existingItemIndex].quantity += quantity;
+        const newQuantity = updatedCart[existingItemIndex].quantity + quantity;
+        if (newQuantity > selectedProduct.current_quantity) {
+          setError(`Only ${selectedProduct.current_quantity} ${selectedProduct.product_unit} available in stock`);
+          return;
+        }
+        updatedCart[existingItemIndex].quantity = newQuantity;
         setCart(updatedCart);
       } else {
         // Add new item
         setCart([...cart, {
           id: Date.now().toString(),
-          productId: selectedProduct.id,
-          name: selectedProduct.name,
+          productId: selectedProduct.product_id,
+          name: selectedProduct.product_name,
           quantity,
-          price: selectedProduct.price
+          price: selectedProduct.product_price,
+          unit: selectedProduct.product_unit,
+          batch_no: selectedProduct.batch_no,
         }]);
       }
       
       setSelectedProduct(null);
       setQuantity(1);
       setProductSearchTerm('');
+      setError(null);
     }
   };
 
@@ -105,7 +235,7 @@ const Pos = () => {
   };
 
   const calculateTax = () => {
-    return calculateSubtotal() * 0.07; // 7% tax
+    return calculateSubtotal() * (taxRate / 100); // Use taxRate state
   };
 
   const calculateTotal = () => {
@@ -115,6 +245,8 @@ const Pos = () => {
   const handleCheckout = () => {
     if (selectedCustomer && cart.length > 0) {
       setShowPaymentModal(true);
+    } else {
+      setError('Please select a customer and add items to cart');
     }
   };
 
@@ -126,347 +258,353 @@ const Pos = () => {
     setChange(Math.max(0, paid - calculateTotal()));
   };
 
-  const handleCompletePayment = () => {
-    // In a real application, this would process the payment and update inventory
-    alert(`Payment completed successfully for ${selectedCustomer?.name}!`);
-    setCart([]);
-    setSelectedCustomer(null);
-    setShowPaymentModal(false);
-    setAmountPaid('');
-    setChange(0);
+  const handleCompletePayment = async () => {
+    if (!selectedCustomer || cart.length === 0) {
+      setError('Please select a customer and add items to cart');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError(null);
+
+      const orderData = {
+        customer_id: parseInt(selectedCustomer.id.toString()),
+        order_type: 'sale',
+        items: cart.map(item => ({
+          product_id: item.productId,
+          batch_no: item.batch_no,
+          quantity_ordered: item.quantity,
+          wholesale_price: item.price,
+          discount_percentage: 0,
+          tax_percentage: taxRate
+        })),
+        expected_delivery_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 7 days from now
+        notes: `Payment method: ${paymentMethod}`,
+        shipping_amount: 0
+      };
+
+      console.log('Creating order with data:', orderData);
+
+      const response = await wholesaleOrdersApi.create(orderData);
+      console.log('Order creation response:', response);
+      
+      if (response.data && (response.data as { success: boolean }).success) {
+        setSuccess('Order created successfully!');
+        setCart([]);
+        setSelectedCustomer(null);
+        setShowPaymentModal(false);
+        setAmountPaid('');
+        setChange(0);
+        
+        // Clear success message after 3 seconds
+        setTimeout(() => setSuccess(null), 3000);
+      } else {
+        const errorMessage = (response.data as { message?: string })?.message || 'Failed to create order';
+        console.error('Order creation failed:', response.data);
+        setError(errorMessage);
+      }
+    } catch (err: unknown) {
+      console.error('Create order error:', err);
+      const errorMessage = (err as { response?: { data?: { message?: string } }; message?: string })?.response?.data?.message || (err as { message?: string })?.message || 'Failed to create order';
+      setError(errorMessage);
+    } finally {
+      setLoading(false);
+    }
   };
 
+  if (loading && (customers.length === 0 || products.length === 0)) {
+    return <LoadingSpinner overlay message="Loading POS system..." />;
+  }
+
   return (
-    <div className="space-y-6">
-      <h2 className="text-lg font-semibold">Point of Sale</h2>
-      
-      {/* Customer Selection */}
-      <div className="bg-white p-4 rounded-lg border">
-        <h3 className="text-md font-medium mb-3">Customer Selection</h3>
-        <div className="flex flex-col md:flex-row md:items-center space-y-4 md:space-y-0 md:space-x-4">
-          <div className="relative flex-1">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <Search className="h-5 w-5 text-gray-400" />
-            </div>
-            <input
-              type="text"
-              placeholder="Search customers..."
-              className="pl-10 pr-4 py-2 border border-gray-300 rounded-md w-full focus:ring-indigo-500 focus:border-indigo-500"
+    <Box sx={{ p: 3 }}>
+      <Typography variant="h5" component="h1" gutterBottom>
+        Wholesale Point of Sale
+      </Typography>
+
+      {error && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          <AlertTriangle className="h-5 w-5" />
+          {error}
+        </Alert>
+      )}
+
+      {success && (
+        <Alert severity="success" sx={{ mb: 2 }}>
+          <ShoppingCart className="h-5 w-5" />
+          {success}
+        </Alert>
+      )}
+
+      <Box sx={{ display: 'flex', gap: 3, flexDirection: { xs: 'column', lg: 'row' } }}>
+        {/* Customer Selection */}
+        <Box sx={{ flex: 1 }}>
+          <Paper sx={{ p: 3 }}>
+            <Typography variant="subtitle1" component="h2" gutterBottom>
+              Select Customer
+            </Typography>
+            
+            <TextField
+              fullWidth
+              margin="normal"
+              label="Search customers..."
+              variant="outlined"
+              InputProps={{
+                startAdornment: (
+                  <Search className="h-5 w-5 text-gray-400" />
+                ),
+              }}
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
-          </div>
-          
-          {selectedCustomer && (
-            <div className="flex-shrink-0 p-3 bg-indigo-50 rounded-md border border-indigo-100">
-              <p className="font-medium">{selectedCustomer.name}</p>
-              <p className="text-sm text-gray-600">{selectedCustomer.phone}</p>
-            </div>
-          )}
-        </div>
-        
-        {searchTerm && !selectedCustomer && (
-          <div className="mt-2 border rounded-md max-h-60 overflow-y-auto">
-            {filteredCustomers.length > 0 ? (
-              <ul className="divide-y divide-gray-200">
-                {filteredCustomers.map(customer => (
-                  <li key={customer.id}>
-                    <button
-                      className="w-full px-4 py-2 text-left hover:bg-gray-50"
-                      onClick={() => {
-                        setSelectedCustomer(customer);
-                        setSearchTerm('');
-                      }}
-                    >
-                      <p className="font-medium">{customer.name}</p>
-                      <div className="flex text-sm text-gray-500">
-                        <p className="mr-4">{customer.phone}</p>
-                        <p>{customer.type}</p>
-                      </div>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <div className="p-4 text-center text-gray-500">No customers found</div>
+
+            <List sx={{ maxHeight: 200, overflow: 'auto', mt: 1 }}>
+              {filteredCustomers.length > 0 ? (
+                filteredCustomers.map(customer => (
+                  <ListItem key={customer.id} onClick={() => setSelectedCustomer(customer)} sx={{ cursor: 'pointer' }}>
+                    <ListItemText
+                      primary={customer.business_name}
+                      secondary={
+                        <>
+                          <Chip label={customer.customer_type} size="small" />
+                          <br />
+                          {customer.phone_number}
+                        </>
+                      }
+                    />
+                    {selectedCustomer?.id === customer.id && (
+                      <CheckCircle className="h-4 w-4 text-indigo-500" />
+                    )}
+                  </ListItem>
+                ))
+              ) : (
+                <ListItem>
+                  <ListItemText primary="No customers found" />
+                </ListItem>
+              )}
+            </List>
+
+            {selectedCustomer && (
+              <Box sx={{ mt: 2, p: 2, bgcolor: alpha('#007bff', 0.1) }}>
+                <Typography variant="subtitle2" component="h3">
+                  Selected Customer
+                </Typography>
+                <Typography variant="body2" color="text.primary">
+                  {selectedCustomer.business_name}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {selectedCustomer.phone_number}
+                </Typography>
+              </Box>
             )}
-          </div>
-        )}
-      </div>
-      
-      {/* Product Selection and Cart */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Product Selection */}
-        <div className="lg:col-span-1 space-y-4">
-          <h3 className="text-md font-medium">Product Selection</h3>
-          <div className="relative">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <Search className="h-5 w-5 text-gray-400" />
-            </div>
-            <input
-              type="text"
-              placeholder="Search products..."
-              className="pl-10 pr-4 py-2 border border-gray-300 rounded-md w-full focus:ring-indigo-500 focus:border-indigo-500"
-              value={productSearchTerm}
-              onChange={(e) => setProductSearchTerm(e.target.value)}
-            />
-          </div>
-          
-          <div className="border rounded-md max-h-96 overflow-y-auto">
-            {filteredProducts.length > 0 ? (
-              <ul className="divide-y divide-gray-200">
-                {filteredProducts.map(product => (
-                  <li key={product.id}>
-                    <button
-                      className={`w-full px-4 py-3 text-left hover:bg-gray-50 ${
-                        selectedProduct?.id === product.id ? 'bg-indigo-50' : ''
-                      }`}
-                      onClick={() => setSelectedProduct(product)}
-                    >
-                      <div className="flex justify-between">
-                        <div>
-                          <p className="font-medium">{product.name}</p>
-                          <p className="text-xs text-gray-500">{product.category}</p>
-                        </div>
-                        <div className="text-right">
-                          <p className="font-bold">Tsh {product.price.toFixed(2)}</p>
-                          <p className="text-xs text-gray-500">Stock: {product.stock}</p>
-                        </div>
-                      </div>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <div className="p-4 text-center text-gray-500">No products found</div>
-            )}
-          </div>
-          
-          {selectedProduct && (
-            <div className="p-4 border rounded-md bg-gray-50">
-              <div className="flex justify-between mb-2">
-                <h4 className="font-medium">{selectedProduct.name}</h4>
-                <span className="font-bold">Tsh {selectedProduct.price.toFixed(2)}</span>
-              </div>
-              <div className="flex space-x-2">
-                <input
+          </Paper>
+        </Box>
+
+        {/* Product Selection and Cart */}
+        <Box sx={{ flex: 2 }}>
+          <Paper sx={{ p: 3 }}>
+            <Typography variant="subtitle1" component="h2" gutterBottom>
+              Add Products
+            </Typography>
+            
+            <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+              <TextField
+                fullWidth
+                margin="normal"
+                label="Search products..."
+                variant="outlined"
+                InputProps={{
+                  startAdornment: (
+                    <Search className="h-5 w-5 text-gray-400" />
+                  ),
+                }}
+                value={productSearchTerm}
+                onChange={(e) => setProductSearchTerm(e.target.value)}
+              />
+              
+              <Box sx={{ display: 'flex', gap: 1 }}>
+                <TextField
                   type="number"
-                  min="1"
-                  max={selectedProduct.stock}
+                  label="Qty"
+                  variant="outlined"
                   value={quantity}
                   onChange={(e) => setQuantity(parseInt(e.target.value) || 1)}
-                  className="border border-gray-300 rounded-md px-3 py-2 w-24 focus:ring-indigo-500 focus:border-indigo-500"
+                  inputProps={{ min: 1 }}
+                  sx={{ flex: 1 }}
                 />
-                <button
+                <Button
+                  variant="contained"
                   onClick={addToCart}
-                  className="flex items-center px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 flex-1"
+                  disabled={!selectedProduct || quantity <= 0}
+                  startIcon={<Plus className="h-4 w-4" />}
                 >
-                  <Plus className="h-5 w-5 mr-2" />
-                  Add to Cart
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-        
-        {/* Cart */}
-        <div className="lg:col-span-2 space-y-4">
-          <h3 className="text-md font-medium">Shopping Cart</h3>
-          
-          <div className="border rounded-md overflow-hidden">
-            <div className="max-h-96 overflow-y-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Product
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Quantity
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Price
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Total
-                    </th>
-                    <th scope="col" className="relative px-6 py-3">
-                      <span className="sr-only">Actions</span>
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {cart.length > 0 ? (
-                    cart.map(item => (
-                      <tr key={item.id}>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                          {item.name}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {item.quantity}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          Tsh {item.price.toFixed(2)}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          Tsh {(item.quantity * item.price).toFixed(2)}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                          <button
-                            onClick={() => removeFromCart(item.id)}
-                            className="text-red-600 hover:text-red-900"
-                          >
-                            <Trash2 className="h-5 w-5" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))
-                  ) : (
-                    <tr>
-                      <td colSpan={5} className="px-6 py-4 text-center text-sm text-gray-500">
-                        No items in cart
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-            
-            {cart.length > 0 && (
-              <div className="bg-gray-50 px-6 py-4">
-                <div className="flex justify-between text-sm mb-2">
-                  <span>Subtotal:</span>
-                  <span>Tsh {calculateSubtotal().toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between text-sm mb-2">
-                  <span>Tax (7%):</span>
-                  <span>Tsh {calculateTax().toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between font-bold">
-                  <span>Total:</span>
-                  <span>Tsh {calculateTotal().toFixed(2)}</span>
-                </div>
-              </div>
-            )}
-          </div>
-          
-          <div className="flex justify-end">
-            <button
-              onClick={handleCheckout}
-              disabled={!selectedCustomer || cart.length === 0}
-              className="flex items-center px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-400"
-            >
-              <Check className="h-5 w-5 mr-2" />
-              Complete Payment
-            </button>
-          </div>
-        </div>
-      </div>
-      
+                  Add
+                </Button>
+              </Box>
+            </Box>
+
+            <List sx={{ maxHeight: 150, overflow: 'auto', mb: 2 }}>
+              {filteredProducts.length > 0 ? (
+                filteredProducts.map(product => (
+                  <ListItem key={product.id} onClick={() => setSelectedProduct(product)} sx={{ cursor: 'pointer' }}>
+                    <ListItemText
+                      primary={product.product_name}
+                      secondary={
+                        <>
+                          <Chip label={product.product_category} size="small" />
+                          <br />
+                          Tsh {product.product_price.toLocaleString()}
+                        </>
+                      }
+                    />
+                    {selectedProduct?.id === product.id && (
+                      <CheckCircle className="h-4 w-4 text-indigo-500" />
+                    )}
+                  </ListItem>
+                ))
+              ) : (
+                <ListItem>
+                  <ListItemText primary="No products found" />
+                </ListItem>
+              )}
+            </List>
+
+            {/* Cart */}
+            <Box sx={{ borderTop: '1px solid', borderColor: 'divider', pt: 2 }}>
+              <Typography variant="subtitle2" component="h3" gutterBottom>
+                Cart Items
+              </Typography>
+              {cart.length > 0 ? (
+                <List sx={{ maxHeight: 200, overflow: 'auto' }}>
+                  {cart.map(item => (
+                    <ListItem key={item.id} sx={{ justifyContent: 'space-between' }}>
+                      <ListItemText
+                        primary={item.name}
+                        secondary={`${item.quantity} x Tsh ${item.price.toLocaleString()}`}
+                      />
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Typography variant="body2" fontWeight="bold">
+                          Tsh {(item.quantity * item.price).toLocaleString()}
+                        </Typography>
+                        <Button
+                          variant="text"
+                          onClick={() => removeFromCart(item.id)}
+                          color="error"
+                          size="small"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </Box>
+                    </ListItem>
+                  ))}
+                  
+                  <Divider sx={{ my: 1 }} />
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <Typography variant="body2">Subtotal:</Typography>
+                    <Typography variant="body2" fontWeight="bold">
+                      Tsh {calculateSubtotal().toLocaleString()}
+                    </Typography>
+                  </Box>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Typography variant="body2">Tax ({taxRate}%):</Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <TextField
+                        type="number"
+                        label="Tax Rate"
+                        variant="outlined"
+                        value={taxRate}
+                        onChange={(e) => setTaxRate(parseFloat(e.target.value) || 0)}
+                        inputProps={{ min: 0, max: 100 }}
+                        size="small"
+                        sx={{ width: 80 }}
+                      />
+                      <Typography variant="body2">Tsh {calculateTax().toLocaleString()}</Typography>
+                    </Box>
+                  </Box>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '1.125rem' }}>
+                    <Typography variant="body2">Total:</Typography>
+                    <Typography variant="body2" fontWeight="bold">
+                      Tsh {calculateTotal().toLocaleString()}
+                    </Typography>
+                  </Box>
+                  
+                  <Button
+                    variant="contained"
+                    onClick={handleCheckout}
+                    disabled={!selectedCustomer || cart.length === 0}
+                    startIcon={<CreditCard className="h-5 w-5" />}
+                    sx={{ mt: 2 }}
+                  >
+                    Proceed to Payment
+                  </Button>
+                </List>
+              ) : (
+                <Box sx={{ textAlign: 'center', py: 8 }}>
+                  <ShoppingCart className="h-12 w-12 mx-auto mb-2 text-gray-300" />
+                  <Typography variant="body2" color="text.secondary">
+                    No items in cart
+                  </Typography>
+                </Box>
+              )}
+            </Box>
+          </Paper>
+        </Box>
+      </Box>
+
       {/* Payment Modal */}
       {showPaymentModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full">
-            <h3 className="text-lg font-medium mb-4">Payment Details</h3>
-            
-            <div className="mb-4">
-              <p className="text-sm text-gray-600">Customer</p>
-              <p className="font-medium">{selectedCustomer?.name}</p>
-            </div>
-            
-            <div className="mb-4">
-              <p className="text-sm text-gray-600">Total Amount</p>
-              <p className="text-xl font-bold">Tsh {calculateTotal().toFixed(2)}</p>
-            </div>
-            
-            <div className="mb-4">
-              <p className="text-sm font-medium text-gray-700 mb-2">Payment Method</p>
-              <div className="flex space-x-4">
-                <button
-                  onClick={() => setPaymentMethod('cash')}
-                  className={`flex items-center px-3 py-2 rounded-md ${
-                    paymentMethod === 'cash'
-                      ? 'bg-indigo-100 text-indigo-700 border border-indigo-300'
-                      : 'bg-gray-100 text-gray-700 border border-gray-300'
-                  }`}
-                >
-                  <DollarSign className="h-5 w-5 mr-1" />
-                  Cash
-                </button>
-                <button
-                  onClick={() => setPaymentMethod('card')}
-                  className={`flex items-center px-3 py-2 rounded-md ${
-                    paymentMethod === 'card'
-                      ? 'bg-indigo-100 text-indigo-700 border border-indigo-300'
-                      : 'bg-gray-100 text-gray-700 border border-gray-300'
-                  }`}
-                >
-                  <CreditCard className="h-5 w-5 mr-1" />
-                  Card
-                </button>
-                <button
-                  onClick={() => setPaymentMethod('mobile')}
-                  className={`flex items-center px-3 py-2 rounded-md ${
-                    paymentMethod === 'mobile'
-                      ? 'bg-indigo-100 text-indigo-700 border border-indigo-300'
-                      : 'bg-gray-100 text-gray-700 border border-gray-300'
-                  }`}
-                >
-                  <Smartphone className="h-5 w-5 mr-1" />
-                  Mobile
-                </button>
-              </div>
-            </div>
-            
-            {paymentMethod === 'cash' && (
-              <div className="grid grid-cols-2 gap-4 mb-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Amount Paid
-                  </label>
-                  <input
-                    type="number"
-                    min={calculateTotal()}
-                    step="0.01"
-                    value={amountPaid}
-                    onChange={handleAmountPaidChange}
-                    className="border border-gray-300 rounded-md px-3 py-2 w-full focus:ring-indigo-500 focus:border-indigo-500"
-                    placeholder="0.00"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Change
-                  </label>
-                  <input
-                    type="text"
-                    value={`Tsh ${change.toFixed(2)}`}
-                    className="border border-gray-300 rounded-md px-3 py-2 w-full bg-gray-50"
-                    readOnly
-                  />
-                </div>
-              </div>
-            )}
-            
-            <div className="flex justify-end space-x-3 mt-6">
-              <button
-                onClick={() => setShowPaymentModal(false)}
-                className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+        <Dialog open={showPaymentModal} onClose={() => setShowPaymentModal(false)}>
+          <DialogTitle>Payment</DialogTitle>
+          <DialogContent>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <TextField
+                label="Payment Method"
+                select
+                value={paymentMethod}
+                onChange={(e) => setPaymentMethod(e.target.value as 'cash' | 'card' | 'mobile')}
+                fullWidth
               >
-                Cancel
-              </button>
-              <button
-                onClick={handleCompletePayment}
-                disabled={paymentMethod === 'cash' && (!amountPaid || parseFloat(amountPaid) < calculateTotal())}
-                className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-400"
-              >
-                Complete Payment
-              </button>
-            </div>
-          </div>
-        </div>
+                <MenuItem value="cash">Cash</MenuItem>
+                <MenuItem value="card">Card</MenuItem>
+                <MenuItem value="mobile">Mobile Money</MenuItem>
+              </TextField>
+
+              <TextField
+                label="Amount Paid"
+                type="number"
+                fullWidth
+                value={amountPaid}
+                onChange={handleAmountPaidChange}
+                inputProps={{ min: calculateTotal() }}
+                InputProps={{
+                  endAdornment: (
+                    <InputAdornment position="end">Tsh</InputAdornment>
+                  ),
+                }}
+              />
+
+              {change > 0 && (
+                <Alert severity="success" sx={{ mt: 1 }}>
+                  <strong>Change:</strong> Tsh {change.toFixed(2)}
+                </Alert>
+              )}
+            </Box>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setShowPaymentModal(false)}>Cancel</Button>
+            <Button
+              onClick={handleCompletePayment}
+              disabled={parseFloat(amountPaid) < calculateTotal() || loading}
+              variant="contained"
+              startIcon={loading ? <CircularProgress size={20} color="inherit" /> : <DollarSign className="h-4 w-4" />}
+            >
+              {loading ? 'Processing...' : 'Complete Payment'}
+            </Button>
+          </DialogActions>
+        </Dialog>
       )}
-    </div>
+    </Box>
   );
 };
 

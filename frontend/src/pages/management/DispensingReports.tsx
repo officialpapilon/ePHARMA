@@ -1,496 +1,138 @@
-// import React, { useState } from 'react';
-// import { Calendar, Download, Filter, Search, Package, Check, Clock, DollarSign } from 'lucide-react';
-// import jsPDF from 'jspdf';
-// import autoTable from 'jspdf-autotable'; // Explicitly import autoTable
-// import * as XLSX from 'xlsx';
-
-// interface ReportItem {
-//   id: string;
-//   date: string;
-//   customer: {
-//     id: string;
-//     name: string;
-//     phone: string;
-//   };
-//   pharmacist: string;
-//   items: {
-//     id: string;
-//     name: string;
-//     quantity: number;
-//     price: number;
-//   }[];
-//   total: number;
-//   status: 'Paid' | 'Pending';
-// }
-
-// const DispensingReport = () => {
-//   const [startDate, setStartDate] = useState('2025-02-01');
-//   const [endDate, setEndDate] = useState('2025-02-28');
-//   const [searchTerm, setSearchTerm] = useState('');
-//   const [pharmacistFilter, setPharmacistFilter] = useState('All');
-//   const [statusFilter, setStatusFilter] = useState<'All' | 'Paid' | 'Pending'>('All');
-
-//   const reportData: ReportItem[] = [
-//     { id: 'TRX-001', date: '2025-02-28 10:30 AM', customer: { id: '1', name: 'John Smith', phone: '123-456-7890' }, pharmacist: 'Dr. Jane Wilson', items: [{ id: '1', name: 'Paracetamol 500mg', quantity: 2, price: 5.99 }, { id: '2', name: 'Amoxicillin 250mg', quantity: 1, price: 12.50 }], total: 24.48, status: 'Paid' },
-//     { id: 'TRX-002', date: '2025-02-28 11:45 AM', customer: { id: '2', name: 'Sarah Johnson', phone: '234-567-8901' }, pharmacist: 'Dr. Robert Taylor', items: [{ id: '3', name: 'Ibuprofen 400mg', quantity: 1, price: 7.25 }, { id: '4', name: 'Cetirizine 10mg', quantity: 2, price: 8.75 }], total: 24.75, status: 'Pending' },
-//     { id: 'TRX-003', date: '2025-02-27 02:15 PM', customer: { id: '3', name: 'Michael Brown', phone: '345-678-9012' }, pharmacist: 'Dr. Jane Wilson', items: [{ id: '5', name: 'Omeprazole 20mg', quantity: 1, price: 15.00 }], total: 15.00, status: 'Paid' },
-//     { id: 'TRX-004', date: '2025-02-26 03:30 PM', customer: { id: '4', name: 'Emily Davis', phone: '456-789-0123' }, pharmacist: 'Dr. Robert Taylor', items: [{ id: '1', name: 'Paracetamol 500mg', quantity: 3, price: 5.99 }, { id: '3', name: 'Ibuprofen 400mg', quantity: 1, price: 7.25 }], total: 25.22, status: 'Pending' },
-//     { id: 'TRX-005', date: '2025-02-25 09:15 AM', customer: { id: '1', name: 'John Smith', phone: '123-456-7890' }, pharmacist: 'Dr. Jane Wilson', items: [{ id: '3', name: 'Ibuprofen 400mg', quantity: 1, price: 7.25 }, { id: '5', name: 'Omeprazole 20mg', quantity: 1, price: 15.00 }], total: 22.25, status: 'Paid' }
-//   ];
-
-//   const pharmacists = ['All', 'Dr. Jane Wilson', 'Dr. Robert Taylor'];
-
-//   const filteredData = reportData.filter(item => {
-//     const itemDate = new Date(item.date.split(' ')[0]);
-//     const start = new Date(startDate);
-//     const end = new Date(endDate);
-//     end.setHours(23, 59, 59, 999);
-
-//     return (
-//       itemDate >= start &&
-//       itemDate <= end &&
-//       (item.customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-//         item.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-//         item.customer.phone.includes(searchTerm)) &&
-//       (pharmacistFilter === 'All' || item.pharmacist === pharmacistFilter) &&
-//       (statusFilter === 'All' || item.status === statusFilter)
-//     );
-//   });
-
-//   const totalSales = filteredData.reduce((sum, item) => sum + item.total, 0);
-//   const totalItems = filteredData.reduce((sum, item) => sum + item.items.reduce((itemSum, product) => itemSum + product.quantity, 0), 0);
-//   const paidTransactions = filteredData.filter(item => item.status === 'Paid');
-//   const pendingTransactions = filteredData.filter(item => item.status === 'Pending');
-//   const paidAmount = paidTransactions.reduce((sum, item) => sum + item.total, 0);
-//   const pendingAmount = pendingTransactions.reduce((sum, item) => sum + item.total, 0);
-
-//   const salesByPharmacist = pharmacists.slice(1).map(pharmacist => ({
-//     pharmacist,
-//     sales: filteredData.filter(item => item.pharmacist === pharmacist).reduce((sum, item) => sum + item.total, 0)
-//   }));
-
-//   const salesByDay: { day: string; sales: number }[] = [];
-//   const startDateObj = new Date(startDate);
-//   const endDateObj = new Date(endDate);
-//   for (let d = new Date(startDateObj); d <= endDateObj; d.setDate(d.getDate() + 1)) {
-//     const day = d.toISOString().split('T')[0];
-//     const daySales = filteredData
-//       .filter(item => item.date.split(' ')[0] === day)
-//       .reduce((sum, item) => sum + item.total, 0);
-//     salesByDay.push({
-//       day: new Date(day).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-//       sales: daySales
-//     });
-//   }
-
-//   // Export to PDF (Fixed)
-//   const exportToPDF = () => {
-//     const doc = new jsPDF();
-//     doc.text('Dispensing Report', 10, 10);
-//     doc.text(`Date Range: ${startDate} to ${endDate}`, 10, 20);
-
-//     const tableData = filteredData.map(item => [
-//       item.id,
-//       item.date,
-//       `${item.customer.name} (${item.customer.phone})`,
-//       item.pharmacist,
-//       item.items.map(i => `${i.name} x ${i.quantity}`).join(', '),
-//       `$${item.total.toFixed(2)}`,
-//       item.status
-//     ]);
-
-//     autoTable(doc, {
-//       head: [['ID', 'Date', 'Customer', 'Pharmacist', 'Items', 'Total', 'Status']],
-//       body: tableData,
-//       startY: 30,
-//       styles: { fontSize: 10 },
-//       headStyles: { fillColor: [79, 70, 229] }, // Indigo-600
-//     });
-
-//     doc.save(`Dispensing_Report_${startDate}_to_${endDate}.pdf`);
-//   };
-
-//   // Export to Excel (Unchanged)
-//   const exportToExcel = () => {
-//     const worksheetData = filteredData.map(item => ({
-//       'Transaction ID': item.id,
-//       'Date': item.date,
-//       'Customer': `${item.customer.name} (${item.customer.phone})`,
-//       'Pharmacist': item.pharmacist,
-//       'Items': item.items.map(i => `${i.name} x ${i.quantity}`).join(', '),
-//       'Total': item.total.toFixed(2),
-//       'Status': item.status
-//     }));
-
-//     const worksheet = XLSX.utils.json_to_sheet(worksheetData);
-//     const workbook = XLSX.utils.book_new();
-//     XLSX.utils.book_append_sheet(workbook, worksheet, 'Dispensing Report');
-//     XLSX.writeFile(workbook, `Dispensing_Report_${startDate}_to_${endDate}.xlsx`);
-//   };
-
-//   return (
-//     <div className="min-h-screen bg-gray-100 p-6">
-//       <div className="max-w-auto mx-auto space-y-6">
-//         <h2 className="text-2xl font-bold text-gray-800">Dispensing Report</h2>
-
-//         {/* Filters */}
-//         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-//           <div>
-//             <label className="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
-//             <div className="relative">
-//               <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
-//               <input
-//                 type="date"
-//                 className="pl-10 pr-4 py-2 border border-gray-300 rounded-md w-full focus:ring-indigo-500 focus:border-indigo-500"
-//                 value={startDate}
-//                 onChange={(e) => setStartDate(e.target.value)}
-//               />
-//             </div>
-//           </div>
-//           <div>
-//             <label className="block text-sm font-medium text-gray-700 mb-1">End Date</label>
-//             <div className="relative">
-//               <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
-//               <input
-//                 type="date"
-//                 className="pl-10 pr-4 py-2 border border-gray-300 rounded-md w-full focus:ring-indigo-500 focus:border-indigo-500"
-//                 value={endDate}
-//                 onChange={(e) => setEndDate(e.target.value)}
-//               />
-//             </div>
-//           </div>
-//           <div>
-//             <label className="block text-sm font-medium text-gray-700 mb-1">Search</label>
-//             <div className="relative">
-//               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
-//               <input
-//                 type="text"
-//                 placeholder="Search customer or ID..."
-//                 className="pl-10 pr-4 py-2 border border-gray-300 rounded-md w-full focus:ring-indigo-500 focus:border-indigo-500"
-//                 value={searchTerm}
-//                 onChange={(e) => setSearchTerm(e.target.value)}
-//               />
-//             </div>
-//           </div>
-//           <div>
-//             <label className="block text-sm font-medium text-gray-700 mb-1">Pharmacist</label>
-//             <div className="relative">
-//               <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
-//               <select
-//                 className="pl-10 pr-4 py-2 border border-gray-300 rounded-md w-full focus:ring-indigo-500 focus:border-indigo-500"
-//                 value={pharmacistFilter}
-//                 onChange={(e) => setPharmacistFilter(e.target.value)}
-//               >
-//                 {pharmacists.map(pharmacist => (
-//                   <option key={pharmacist} value={pharmacist}>{pharmacist}</option>
-//                 ))}
-//               </select>
-//             </div>
-//           </div>
-//           <div>
-//             <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-//             <div className="relative">
-//               <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
-//               <select
-//                 className="pl-10 pr-4 py-2 border border-gray-300 rounded-md w-full focus:ring-indigo-500 focus:border-indigo-500"
-//                 value={statusFilter}
-//                 onChange={(e) => setStatusFilter(e.target.value as 'All' | 'Paid' | 'Pending')}
-//               >
-//                 <option value="All">All Status</option>
-//                 <option value="Paid">Paid</option>
-//                 <option value="Pending">Pending</option>
-//               </select>
-//             </div>
-//           </div>
-//         </div>
-
-//         {/* Export Buttons */}
-//         <div className="flex justify-end gap-4">
-//           <button
-//             onClick={exportToPDF}
-//             className="flex items-center px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
-//           >
-//             <Download className="h-5 w-5 mr-2" />
-//             Export PDF
-//           </button>
-//           <button
-//             onClick={exportToExcel}
-//             className="flex items-center px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
-//           >
-//             <Download className="h-5 w-5 mr-2" />
-//             Export Excel
-//           </button>
-//         </div>
-
-//         {/* Summary Cards */}
-//         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-//           <div className="bg-white p-6 rounded-lg shadow border">
-//             <div className="flex justify-between items-start">
-//               <div>
-//                 <p className="text-sm font-medium text-gray-600">Total Sales</p>
-//                 <p className="mt-2 text-3xl font-semibold">Tsh {totalSales.toFixed(2)}</p>
-//               </div>
-//               <div className="p-3 rounded-full bg-green-100">
-//                 <DollarSign className="h-6 w-6 text-green-600" />
-//               </div>
-//             </div>
-//           </div>
-//           <div className="bg-white p-6 rounded-lg shadow border">
-//             <div className="flex justify-between items-start">
-//               <div>
-//                 <p className="text-sm font-medium text-gray-600">Items Dispensed</p>
-//                 <p className="mt-2 text-3xl font-semibold">{totalItems}</p>
-//               </div>
-//               <div className="p-3 rounded-full bg-blue-100">
-//                 <Package className="h-6 w-6 text-blue-600" />
-//               </div>
-//             </div>
-//           </div>
-//           <div className="bg-white p-6 rounded-lg shadow border">
-//             <div className="flex justify-between items-start">
-//               <div>
-//                 <p className="text-sm font-medium text-gray-600">Paid Amount</p>
-//                 <p className="mt-2 text-3xl font-semibold">Tsh {paidAmount.toFixed(2)}</p>
-//               </div>
-//               <div className="p-3 rounded-full bg-green-100">
-//                 <Check className="h-6 w-6 text-green-600" />
-//               </div>
-//             </div>
-//             <p className="mt-2 text-sm text-gray-500">{paidTransactions.length} transactions</p>
-//           </div>
-//           <div className="bg-white p-6 rounded-lg shadow border">
-//             <div className="flex justify-between items-start">
-//               <div>
-//                 <p className="text-sm font-medium text-gray-600">Pending Amount</p>
-//                 <p className="mt-2 text-3xl font-semibold">Tsh {pendingAmount.toFixed(2)}</p>
-//               </div>
-//               <div className="p-3 rounded-full bg-yellow-100">
-//                 <Clock className="h-6 w-6 text-yellow-600" />
-//               </div>
-//             </div>
-//             <p className="mt-2 text-sm text-gray-500">{pendingTransactions.length} transactions</p>
-//           </div>
-//         </div>
-
-//         {/* Charts */}
-//         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-//           <div className="bg-white p-6 rounded-lg shadow border">
-//             <h3 className="text-md font-medium mb-4">Sales by Pharmacist</h3>
-//             <div className="h-64">
-//               <div className="h-full flex items-end space-x-4">
-//                 {salesByPharmacist.map((item, index) => (
-//                   <div key={index} className="flex-1 flex flex-col items-center">
-//                     <div
-//                       className="w-full bg-indigo-500 rounded-t"
-//                       style={{ height: `${item.sales > 0 ? (item.sales / Math.max(...salesByPharmacist.map(i => i.sales)) * 100) : 0}%` }}
-//                     ></div>
-//                     <div className="text-xs mt-2 text-center">{item.pharmacist}</div>
-//                     <div className="text-xs font-medium">Tsh {item.sales.toFixed(2)}</div>
-//                   </div>
-//                 ))}
-//               </div>
-//             </div>
-//           </div>
-//           <div className="bg-white p-6 rounded-lg shadow border">
-//             <h3 className="text-md font-medium mb-4">Daily Sales</h3>
-//             <div className="h-64">
-//               <div className="h-full flex items-end space-x-1">
-//                 {salesByDay.map((item, index) => (
-//                   <div key={index} className="flex-1 flex flex-col items-center">
-//                     <div
-//                       className="w-full bg-green-500 rounded-t"
-//                       style={{ height: `${item.sales > 0 ? (item.sales / Math.max(...salesByDay.map(i => i.sales)) * 100) : 0}%` }}
-//                     ></div>
-//                     <div className="text-xs mt-2 text-center">{item.day}</div>
-//                   </div>
-//                 ))}
-//               </div>
-//             </div>
-//           </div>
-//         </div>
-
-//         {/* Report Table */}
-//         <div className="bg-white p-6 rounded-lg shadow-md border">
-//           <h3 className="text-lg font-semibold text-gray-700 mb-4">Transaction Details</h3>
-//           <div className="overflow-x-auto">
-//             <table className="min-w-full divide-y divide-gray-200">
-//               <thead className="bg-gray-50">
-//                 <tr>
-//                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Transaction ID</th>
-//                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-//                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>
-//                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Pharmacist</th>
-//                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Items</th>
-//                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
-//                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-//                 </tr>
-//               </thead>
-//               <tbody className="bg-white divide-y divide-gray-200">
-//                 {filteredData.length > 0 ? (
-//                   filteredData.map(item => (
-//                     <tr key={item.id}>
-//                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{item.id}</td>
-//                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{item.date}</td>
-//                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-//                         <div>
-//                           <p className="font-medium">{item.customer.name}</p>
-//                           <p className="text-xs">{item.customer.phone}</p>
-//                         </div>
-//                       </td>
-//                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{item.pharmacist}</td>
-//                       <td className="px-6 py-4 text-sm text-gray-500">
-//                         <ul className="list-disc list-inside">
-//                           {item.items.map(product => (
-//                             <li key={product.id}>{product.name} x {product.quantity}</li>
-//                           ))}
-//                         </ul>
-//                       </td>
-//                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">Tsh {item.total.toFixed(2)}</td>
-//                       <td className="px-6 py-4 whitespace-nowrap">
-//                         <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${item.status === 'Paid' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
-//                           {item.status}
-//                         </span>
-//                       </td>
-//                     </tr>
-//                   ))
-//                 ) : (
-//                   <tr>
-//                     <td colSpan={7} className="px-6 py-4 text-center text-sm text-gray-500">No data found for the selected criteria</td>
-//                   </tr>
-//                 )}
-//               </tbody>
-//             </table>
-//           </div>
-//         </div>
-
-//         {/* Summary */}
-//         <div className="bg-gray-50 p-4 rounded-md border">
-//           <h3 className="text-md font-medium mb-2">Report Summary</h3>
-//           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-//             <div>
-//               <p className="text-sm text-gray-500">Total Transactions</p>
-//               <p className="text-xl font-semibold">{filteredData.length}</p>
-//             </div>
-//             <div>
-//               <p className="text-sm text-gray-500">Total Items</p>
-//               <p className="text-xl font-semibold">{totalItems}</p>
-//             </div>
-//             <div>
-//               <p className="text-sm text-gray-500">Total Sales</p>
-//               <p className="text-xl font-semibold">Tsh {totalSales.toFixed(2)}</p>
-//             </div>
-//           </div>
-//         </div>
-//       </div>
-//     </div>
-//   );
-// };
-
-// export default DispensingReport;
-
-
 import React, { useState, useEffect } from 'react';
-import { Calendar, Download, Filter, Search, RefreshCw } from 'lucide-react';
-import { API_BASE_URL } from '../../../constants'; // Adjust path as needed
-import jsPDF from 'jspdf';
-import 'jspdf-autotable';
-import * as XLSX from 'xlsx';
+import { 
+  Download, 
+  Search, 
+  Filter, 
+  AlertCircle, 
+  X, 
+  ChevronLeft, 
+  ChevronRight,
+  RefreshCw,
+  FileSpreadsheet,
+  BarChart3,
+  TrendingUp,
+  TrendingDown,
+  Pill,
+  Users,
+  Calendar,
+  Eye,
+  Clock,
+  DollarSign
+} from 'lucide-react';
+import { useTheme } from '@mui/material';
+import { Bar, Line, Doughnut } from 'react-chartjs-2';
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  BarElement,
+  ArcElement,
+  Title,
+  Tooltip,
+  Legend,
+} from 'chart.js';
+import { API_BASE_URL } from '../../../constants';
+import DataTable from '../../components/common/DataTable/DataTable';
+import { TableColumn } from '../../components/common/DataTable/DataTable';
+import LoadingSpinner from '../../components/common/LoadingSpinner/LoadingSpinner';
 
-interface ReportItem {
-  id: string;
-  date: string;
-  customer: {
-    id: string;
-    name: string;
-    phone: string;
-  };
-  pharmacist: string;
-  items: {
-    id: string;
-    name: string;
-    quantity: number;
-  }[];
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  BarElement,
+  ArcElement,
+  Title,
+  Tooltip,
+  Legend
+);
+
+interface DispensingRecord {
+  id: number;
+  dispense_id: string;
+  patient_id: number;
+  patient_name: string;
+  products_dispensed: string;
+  total_amount: number;
+  dispensed_by: number;
+  dispensed_at: string;
+  status: string;
+  payment_status: string;
+  created_at: string;
+  updated_at: string;
 }
 
-const DispensingReport = () => {
-  const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
-  const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [pharmacistFilter, setPharmacistFilter] = useState('All');
-  const [reportData, setReportData] = useState<ReportItem[]>([]);
-  const [pharmacists, setPharmacists] = useState<string[]>(['All']);
+interface DispensingSummary {
+  total_dispensings: number;
+  total_revenue: number;
+  pending_dispensings: number;
+  completed_dispensings: number;
+  cancelled_dispensings: number;
+  average_dispensing_value: number;
+  top_dispensing_products: Array<{
+    product_name: string;
+    total_quantity: number;
+    total_revenue: number;
+  }>;
+  dispensing_trends: Array<{
+    date: string;
+    dispensings: number;
+    revenue: number;
+  }>;
+}
+
+const DispensingReports: React.FC = () => {
+  const theme = useTheme();
+  const [dispensings, setDispensings] = useState<DispensingRecord[]>([]);
+  const [filteredDispensings, setFilteredDispensings] = useState<DispensingRecord[]>([]);
+  const [summary, setSummary] = useState<DispensingSummary | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage] = useState(15);
+  const [totalItems, setTotalItems] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+
+  // Filters
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedStatus, setSelectedStatus] = useState('');
+  const [selectedPaymentStatus, setSelectedPaymentStatus] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [sortBy, setSortBy] = useState('created_at');
+  const [sortOrder, setSortOrder] = useState('desc');
 
   useEffect(() => {
-    if (!localStorage.getItem('token')) {
-      window.location.href = '/login';
-    } else {
-      fetchPharmacists();
-      fetchReportData();
-    }
-  }, []);
+    fetchDispensingData();
+  }, [currentPage, sortBy, sortOrder]);
 
-  const fetchReportData = async () => {
+  useEffect(() => {
+    filterDispensings();
+  }, [dispensings, searchTerm, selectedStatus, selectedPaymentStatus, startDate, endDate]);
+
+  const fetchDispensingData = async () => {
     setLoading(true);
     setError(null);
     try {
       const token = localStorage.getItem('token');
       if (!token) throw new Error('No authentication token found');
-      const response = await fetch(
-        `${API_BASE_URL}/api/dispensing-report?start_date=${startDate}&end_date=${endDate}`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            'ngrok-skip-browser-warning': 'true',
-          },
-        }
-      );
-      const text = await response.text();
-      console.log('Raw response from /dispensing-report:', text);
 
-      if (!response.ok) {
-        if (response.status === 401) {
-          localStorage.removeItem('token');
-          localStorage.removeItem('username');
-          window.location.href = '/login';
-          return;
-        }
-        if (response.status === 404) {
-          setReportData([]);
-          return; // No data found, treat as empty
-        }
-        throw new Error(`HTTP ${response.status}: ${text || 'Unknown error'}`);
-      }
-      if (!text) {
-        setReportData([]);
-        return;
-      }
-      const data = JSON.parse(text);
-      if (!Array.isArray(data)) {
-        throw new Error('Invalid data format');
-      }
-      setReportData(data);
-    } catch (err: any) {
-      console.error('Fetch report error:', err.message);
-      setError(
-        err.message === 'No authentication token found'
-          ? 'Please log in to access this page.'
-          : 'Unable to fetch dispensing report. Please try again later.'
-      );
-      setReportData([]);
-    } finally {
-      setLoading(false);
-    }
-  };
+      const params = new URLSearchParams({
+        page: currentPage.toString(),
+        per_page: itemsPerPage.toString(),
+        sort_by: sortBy,
+        sort_order: sortOrder,
+        ...(searchTerm && { search: searchTerm }),
+        ...(selectedStatus && { status: selectedStatus }),
+        ...(selectedPaymentStatus && { payment_status: selectedPaymentStatus }),
+        ...(startDate && { start_date: startDate }),
+        ...(endDate && { end_date: endDate })
+      });
 
-  const fetchPharmacists = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      if (!token) throw new Error('No authentication token found');
-      const response = await fetch(`${API_BASE_URL}/api/pharmacists`, {
+      const response = await fetch(`${API_BASE_URL}/api/dispensing-report?${params}`, {
         headers: {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
@@ -498,337 +140,847 @@ const DispensingReport = () => {
           'ngrok-skip-browser-warning': 'true',
         },
       });
-      const text = await response.text();
-      console.log('Raw response from /pharmacists:', text);
+
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${text || 'Unknown error'}`);
+        throw new Error(`Failed to fetch dispensing data: ${response.status}`);
       }
-      const data = JSON.parse(text);
-      if (!Array.isArray(data)) {
-        throw new Error('Invalid data format');
+
+      const result = await response.json();
+      if (result.success) {
+        setDispensings(result.data);
+        setSummary(result.summary);
+        setTotalItems(result.meta.total);
+        setTotalPages(result.meta.last_page);
+      } else {
+        setDispensings([]);
+        setSummary(null);
       }
-      setPharmacists(['All', ...data.map((p: any) => p.name)]);
     } catch (err: any) {
-      console.error('Fetch pharmacists error:', err.message);
-      setPharmacists(['All']); // Fallback to 'All'
+      console.error('Fetch dispensing error:', err);
+      setError(err.message);
+      setDispensings([]);
+      setSummary(null);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const filteredData = reportData.filter((item) => {
-    const itemDate = new Date(item.date.split(' ')[0]);
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    end.setHours(23, 59, 59, 999);
+  const filterDispensings = () => {
+    let filtered = dispensings;
 
-    const inDateRange = itemDate >= start && itemDate <= end;
-    const matchesSearch =
-      item.customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.id.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesPharmacist = pharmacistFilter === 'All' || item.pharmacist === pharmacistFilter;
+    if (searchTerm) {
+      filtered = filtered.filter(dispensing =>
+        dispensing.patient_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        dispensing.dispense_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        dispensing.products_dispensed.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
 
-    return inDateRange && matchesSearch && matchesPharmacist;
-  });
+    if (selectedStatus) {
+      filtered = filtered.filter(dispensing => dispensing.status === selectedStatus);
+    }
 
-  const exportToPDF = () => {
-    const doc = new jsPDF();
-    const title = 'Pharmacy Dispensing Report';
-    const dateRange = `Date Range: ${startDate} to ${endDate}`;
-    const filteredBy = `Pharmacist: ${pharmacistFilter}`;
-    const generatedOn = `Generated on: ${new Date().toLocaleString()}`;
+    if (selectedPaymentStatus) {
+      filtered = filtered.filter(dispensing => dispensing.payment_status === selectedPaymentStatus);
+    }
 
-    doc.setFontSize(18);
-    doc.text(title, 14, 20);
-    doc.setFontSize(12);
-    doc.text(dateRange, 14, 30);
-    doc.text(filteredBy, 14, 40);
-    doc.setFontSize(10);
-    doc.text(generatedOn, 14, 50);
+    if (startDate && endDate) {
+      filtered = filtered.filter(dispensing => {
+        const dispensingDate = new Date(dispensing.created_at);
+        const start = new Date(startDate);
+        const end = new Date(endDate);
+        return dispensingDate >= start && dispensingDate <= end;
+      });
+    }
 
-    const tableData = filteredData.map((item) => [
-      item.id,
-      item.date,
-      `${item.customer.name} (${item.customer.phone})`,
-      item.pharmacist,
-      item.items.map((med) => `${med.name} x ${med.quantity}`).join(', '),
-    ]);
-
-    (doc as any).autoTable({
-      head: [['Transaction ID', 'Date', 'Customer', 'Pharmacist', 'Items Dispensed']],
-      body: tableData,
-      startY: 60,
-      styles: { fontSize: 10, cellPadding: 2 },
-      headStyles: { fillColor: [66, 66, 66], textColor: [255, 255, 255] },
-      alternateRowStyles: { fillColor: [240, 240, 240] },
-    });
-
-    const summaryY = (doc as any).lastAutoTable.finalY + 10;
-    doc.setFontSize(12);
-    doc.text('Report Summary', 14, summaryY);
-    doc.setFontSize(10);
-    doc.text(`Total Transactions: ${filteredData.length}`, 14, summaryY + 10);
-    doc.text(
-      `Total Customers: ${new Set(filteredData.map((item) => item.customer.id)).size}`,
-      14,
-      summaryY + 20
-    );
-    doc.text(
-      `Total Items Dispensed: ${filteredData.reduce(
-        (total, item) => total + item.items.reduce((sum, med) => sum + med.quantity, 0),
-        0
-      )}`,
-      14,
-      summaryY + 30
-    );
-
-    doc.save(`dispensing_report_${startDate}_to_${endDate}.pdf`);
+    setFilteredDispensings(filtered);
   };
 
-  const exportToExcel = () => {
-    const worksheetData = filteredData.map((item) => ({
-      'Transaction ID': item.id,
-      Date: item.date,
-      'Customer Name': item.customer.name,
-      'Customer Phone': item.customer.phone,
-      Pharmacist: item.pharmacist,
-      'Items Dispensed': item.items.map((med) => `${med.name} x ${med.quantity}`).join(', '),
+  const handleExportExcel = () => {
+    const exportData = filteredDispensings.map(dispensing => ({
+      'Dispense ID': dispensing.dispense_id,
+      'Patient Name': dispensing.patient_name,
+      'Products': dispensing.products_dispensed,
+      'Total Amount': dispensing.total_amount,
+      'Status': dispensing.status,
+      'Payment Status': dispensing.payment_status,
+      'Dispensed Date': new Date(dispensing.dispensed_at).toLocaleDateString(),
+      'Created Date': new Date(dispensing.created_at).toLocaleDateString()
     }));
 
-    const worksheet = XLSX.utils.json_to_sheet(worksheetData);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Dispensing Report');
-    XLSX.writeFile(workbook, `dispensing_report_${startDate}_to_${endDate}.xlsx`);
+    // Create CSV content
+    const headers = Object.keys(exportData[0] || {});
+    const csvContent = [
+      headers.join(','),
+      ...exportData.map(row => headers.map(header => `"${row[header]}"`).join(','))
+    ].join('\n');
+
+    // Download file
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `dispensing_report_${new Date().toISOString().slice(0, 10)}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
-  const handleRefresh = () => {
-    fetchReportData();
+  const formatCurrency = (amount: number | undefined | null) => {
+    if (amount === undefined || amount === null) return 'Tsh 0';
+    return `Tsh ${amount.toLocaleString()}`;
   };
+
+  const formatNumber = (num: number) => {
+    return num.toLocaleString();
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'completed': return theme.palette.success.main;
+      case 'pending': return theme.palette.warning.main;
+      case 'cancelled': return theme.palette.error.main;
+      default: return theme.palette.grey[500];
+    }
+  };
+
+  const getStatusText = (status: string) => {
+    if (!status) return '-';
+    return status.charAt(0).toUpperCase() + status.slice(1);
+  };
+
+  const getPaymentStatusColor = (status: string) => {
+    switch (status) {
+      case 'paid': return theme.palette.success.main;
+      case 'pending': return theme.palette.warning.main;
+      case 'failed': return theme.palette.error.main;
+      default: return theme.palette.grey[500];
+    }
+  };
+
+  // DataTable columns
+  const columns: TableColumn[] = [
+    {
+      key: 'dispense_id',
+      header: 'Dispense ID',
+      sortable: true,
+      width: '12%'
+    },
+    {
+      key: 'patient_name',
+      header: 'Patient',
+      sortable: true,
+      width: '18%',
+      render: (row: any) => {
+        if (!row) return '-';
+        return (
+          <div>
+            <div style={{ fontWeight: 600, color: theme.palette.text.primary }}>
+              {row.patient_name}
+            </div>
+            <div style={{ fontSize: 12, color: theme.palette.text.secondary }}>
+              ID: {row.patient_id}
+            </div>
+          </div>
+        );
+      }
+    },
+    {
+      key: 'products_dispensed',
+      header: 'Products',
+      sortable: false,
+      width: '20%',
+      render: (row: any) => {
+        if (!row) return '-';
+        return (
+          <div style={{ 
+            maxWidth: 200, 
+            overflow: 'hidden', 
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap'
+          }}>
+            {row.products_dispensed}
+          </div>
+        );
+      }
+    },
+    {
+      key: 'total_amount',
+      header: 'Amount',
+      sortable: true,
+      width: '12%',
+      render: (row: any) => {
+        if (!row) return '-';
+        return (
+          <span style={{ fontWeight: 600, color: theme.palette.success.main }}>
+            {formatCurrency(row.total_amount)}
+          </span>
+        );
+      }
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      sortable: true,
+      width: '12%',
+      render: (row: any) => {
+        if (!row) return '-';
+        return (
+          <span style={{
+            padding: '4px 8px',
+            borderRadius: 12,
+            fontSize: 12,
+            fontWeight: 500,
+            background: getStatusColor(row.status) + '20',
+            color: getStatusColor(row.status)
+          }}>
+            {getStatusText(row.status)}
+          </span>
+        );
+      }
+    },
+    {
+      key: 'payment_status',
+      header: 'Payment',
+      sortable: true,
+      width: '12%',
+      render: (row: any) => {
+        if (!row) return '-';
+        return (
+          <span style={{
+            padding: '4px 8px',
+            borderRadius: 12,
+            fontSize: 12,
+            fontWeight: 500,
+            background: getPaymentStatusColor(row.payment_status) + '20',
+            color: getPaymentStatusColor(row.payment_status)
+          }}>
+            {getStatusText(row.payment_status)}
+          </span>
+        );
+      }
+    },
+    {
+      key: 'dispensed_at',
+      header: 'Dispensed',
+      sortable: true,
+      width: '14%',
+      render: (row: any) => {
+        if (!row) return '-';
+        return new Date(row.dispensed_at).toLocaleDateString();
+      }
+    }
+  ];
+
+  // Chart data
+  const dispensingTrendsData = {
+    labels: summary?.dispensing_trends.map(item => {
+      const date = new Date(item.date);
+      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    }) || [],
+    datasets: [
+      {
+        label: 'Dispensings',
+        data: summary?.dispensing_trends.map(item => item.dispensings) || [],
+        borderColor: theme.palette.primary.main,
+        backgroundColor: theme.palette.primary.light,
+        tension: 0.4,
+      },
+      {
+        label: 'Revenue',
+        data: summary?.dispensing_trends.map(item => item.revenue) || [],
+        borderColor: theme.palette.success.main,
+        backgroundColor: theme.palette.success.light,
+        tension: 0.4,
+        yAxisID: 'y1',
+      },
+    ],
+  };
+
+  const topProductsData = {
+    labels: summary?.top_dispensing_products.map(item => item.product_name) || [],
+    datasets: [
+      {
+        data: summary?.top_dispensing_products.map(item => item.total_quantity) || [],
+        backgroundColor: [
+          theme.palette.primary.main,
+          theme.palette.secondary.main,
+          theme.palette.success.main,
+          theme.palette.warning.main,
+          theme.palette.error.main,
+        ],
+        borderWidth: 2,
+        borderColor: theme.palette.background.paper,
+      },
+    ],
+  };
+
+  const chartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        position: 'top' as const,
+        labels: {
+          color: theme.palette.text.primary,
+        },
+      },
+    },
+    scales: {
+      y: {
+        type: 'linear' as const,
+        display: true,
+        position: 'left' as const,
+        ticks: {
+          color: theme.palette.text.secondary,
+        },
+        grid: {
+          color: theme.palette.divider,
+        },
+      },
+      y1: {
+        type: 'linear' as const,
+        display: true,
+        position: 'right' as const,
+        ticks: {
+          color: theme.palette.text.secondary,
+        },
+        grid: {
+          drawOnChartArea: false,
+        },
+      },
+      x: {
+        ticks: {
+          color: theme.palette.text.secondary,
+        },
+        grid: {
+          color: theme.palette.divider,
+        },
+      },
+    },
+  };
+
+  const doughnutOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        position: 'bottom' as const,
+        labels: {
+          color: theme.palette.text.primary,
+        },
+      },
+    },
+  };
+
+  if (loading && dispensings.length === 0) {
+    return (
+      <div style={{ 
+        padding: '16px', 
+        background: theme.palette.background.default, 
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center'
+      }}>
+        <LoadingSpinner 
+          loading={true} 
+          message="Loading dispensing report..." 
+          size={48}
+        />
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-gray-100 p-6">
-      <div className="max-w-auto mx-auto space-y-6">
-        <div className="flex justify-between items-center">
-          <h1 className="text-3xl font-bold text-gray-900">Dispensing Report</h1>
+    <div style={{ 
+      padding: '16px', 
+      background: theme.palette.background.default, 
+      minHeight: '100vh', 
+      width: '100%', 
+      maxWidth: '100vw', 
+      boxSizing: 'border-box' 
+    }}>
+      {/* Header */}
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'space-between', 
+        alignItems: 'center', 
+        marginBottom: 24 
+      }}>
+        <h2 style={{ 
+          fontSize: 24, 
+          fontWeight: 700, 
+          color: theme.palette.text.primary 
+        }}>
+          Dispensing Reports
+        </h2>
+        <div style={{ display: 'flex', gap: 12 }}>
           <button
-            onClick={handleRefresh}
-            className="flex items-center px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 disabled:bg-gray-400"
+            onClick={fetchDispensingData}
             disabled={loading}
-            title="Refresh Report"
+            style={{
+              padding: '8px 16px',
+              background: theme.palette.primary.main,
+              color: theme.palette.primary.contrastText,
+              border: 'none',
+              borderRadius: 8,
+              cursor: loading ? 'not-allowed' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              opacity: loading ? 0.7 : 1
+            }}
           >
-            <RefreshCw className={`h-5 w-5 ${loading ? 'animate-spin' : ''}`} />
-          </button>
-        </div>
-
-        {loading && (
-          <div className="text-center text-gray-600 flex items-center justify-center">
-            <RefreshCw className="h-5 w-5 animate-spin mr-2" />
-            Loading report...
-          </div>
-        )}
-        {error && (
-          <div className="text-center text-red-600 bg-red-50 p-3 rounded-md mb-4">{error}</div>
-        )}
-
-        {/* Filters */}
-        <div className="bg-white p-6 rounded-lg shadow-md">
-          <h2 className="text-lg font-semibold text-gray-800 mb-4">Filter Report</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <Calendar className="h-5 w-5 text-gray-400" />
-                </div>
-                <input
-                  type="date"
-                  className="pl-10 pr-4 py-2 border border-gray-300 rounded-md w-full focus:ring-indigo-500 focus:border-indigo-500 focus:outline-none"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  disabled={loading}
-                />
-              </div>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">End Date</label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <Calendar className="h-5 w-5 text-gray-400" />
-                </div>
-                <input
-                  type="date"
-                  className="pl-10 pr-4 py-2 border border-gray-300 rounded-md w-full focus:ring-indigo-500 focus:border-indigo-500 focus:outline-none"
-                  value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  disabled={loading}
-                />
-              </div>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Search</label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <Search className="h-5 w-5 text-gray-400" />
-                </div>
-                <input
-                  type="text"
-                  placeholder="Search by customer or ID..."
-                  className="pl-10 pr-4 py-2 border border-gray-300 rounded-md w-full focus:ring-indigo-500 focus:border-indigo-500 focus:outline-none"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  disabled={loading}
-                />
-              </div>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Pharmacist</label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <Filter className="h-5 w-5 text-gray-400" />
-                </div>
-                <select
-                  className="pl-10 pr-4 py-2 border border-gray-300 rounded-md w-full focus:ring-indigo-500 focus:border-indigo-500 focus:outline-none"
-                  value={pharmacistFilter}
-                  onChange={(e) => setPharmacistFilter(e.target.value)}
-                  disabled={loading}
-                >
-                  {pharmacists.map((pharmacist) => (
-                    <option key={pharmacist} value={pharmacist}>
-                      {pharmacist}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-            <div className="flex items-end">
-              <button
-                onClick={fetchReportData}
-                className="w-full px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:bg-gray-400 transition-colors duration-200"
-                disabled={loading}
-              >
-                Apply Filters
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Export Options */}
-        <div className="flex justify-end space-x-4">
-          <button
-            onClick={exportToPDF}
-            className="flex items-center px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-400 transition-colors duration-200"
-            disabled={loading || filteredData.length === 0}
-          >
-            <Download className="h-5 w-5 mr-2" />
-            Export as PDF
+            <RefreshCw style={{ width: 16, height: 16 }} />
+            Refresh
           </button>
           <button
-            onClick={exportToExcel}
-            className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 transition-colors duration-200"
-            disabled={loading || filteredData.length === 0}
+            onClick={handleExportExcel}
+            style={{
+              padding: '8px 16px',
+              background: theme.palette.success.main,
+              color: theme.palette.success.contrastText,
+              border: 'none',
+              borderRadius: 8,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8
+            }}
           >
-            <Download className="h-5 w-5 mr-2" />
-            Export as Excel
+            <FileSpreadsheet style={{ width: 16, height: 16 }} />
+            Export Excel
           </button>
         </div>
+      </div>
 
-        {/* Report Table */}
-        <div className="bg-white p-6 rounded-lg shadow-md">
-          <h2 className="text-lg font-semibold text-gray-800 mb-4">Dispensing Records</h2>
-          <div className="border rounded-md overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Transaction ID
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Date
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Customer
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Pharmacist
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Items Dispensed
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {filteredData.length > 0 ? (
-                    filteredData.map((item) => (
-                      <tr key={item.id} className="hover:bg-gray-50 transition-colors duration-100">
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                          {item.id}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                          {item.date}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                          <div>
-                            <p className="font-medium">{item.customer.name}</p>
-                            <p className="text-xs text-gray-500">{item.customer.phone}</p>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                          {item.pharmacist}
-                        </td>
-                        <td className="px-6 py-4 text-sm text-gray-600">
-                          <ul className="list-disc list-inside">
-                            {item.items.map((medicine) => (
-                              <li key={medicine.id}>
-                                {medicine.name} x {medicine.quantity}
-                              </li>
-                            ))}
-                          </ul>
-                        </td>
-                      </tr>
-                    ))
-                  ) : (
-                    <tr>
-                      <td
-                        colSpan={5}
-                        className="px-6 py-4 text-center text-sm text-gray-500"
-                      >
-                        No dispensing records found for the selected criteria
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+      {error && (
+        <div style={{
+          padding: 16,
+          background: theme.palette.error.light,
+          color: theme.palette.error.main,
+          borderRadius: 8,
+          marginBottom: 24,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8
+        }}>
+          <AlertCircle style={{ width: 20, height: 20 }} />
+          {error}
+        </div>
+      )}
+
+      {summary && (
+        <>
+          {/* Summary Cards */}
+          <div style={{ 
+            display: 'grid', 
+            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', 
+            gap: 24, 
+            marginBottom: 32 
+          }}>
+            <div style={{ 
+              background: theme.palette.background.paper, 
+              padding: 20, 
+              borderRadius: 12, 
+              boxShadow: theme.shadows[1], 
+              border: `1px solid ${theme.palette.divider}` 
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <p style={{ fontSize: 12, fontWeight: 500, color: theme.palette.text.secondary }}>Total Revenue</p>
+                  <p style={{ marginTop: 4, fontSize: 24, fontWeight: 700, color: theme.palette.success.main }}>
+                    {formatCurrency(summary.total_revenue)}
+                  </p>
+                </div>
+                <DollarSign style={{ color: theme.palette.success.main, width: 20, height: 20 }} />
+              </div>
+            </div>
+
+            <div style={{ 
+              background: theme.palette.background.paper, 
+              padding: 20, 
+              borderRadius: 12, 
+              boxShadow: theme.shadows[1], 
+              border: `1px solid ${theme.palette.divider}` 
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <p style={{ fontSize: 12, fontWeight: 500, color: theme.palette.text.secondary }}>Total Dispensings</p>
+                  <p style={{ marginTop: 4, fontSize: 24, fontWeight: 700, color: theme.palette.text.primary }}>
+                    {formatNumber(summary.total_dispensings)}
+                  </p>
+                </div>
+                <Pill style={{ color: theme.palette.primary.main, width: 20, height: 20 }} />
+              </div>
+            </div>
+
+            <div style={{ 
+              background: theme.palette.background.paper, 
+              padding: 20, 
+              borderRadius: 12, 
+              boxShadow: theme.shadows[1], 
+              border: `1px solid ${theme.palette.divider}` 
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <p style={{ fontSize: 12, fontWeight: 500, color: theme.palette.text.secondary }}>Completed</p>
+                  <p style={{ marginTop: 4, fontSize: 24, fontWeight: 700, color: theme.palette.success.main }}>
+                    {formatNumber(summary.completed_dispensings)}
+                  </p>
+                </div>
+                <TrendingUp style={{ color: theme.palette.success.main, width: 20, height: 20 }} />
+              </div>
+            </div>
+
+            <div style={{ 
+              background: theme.palette.background.paper, 
+              padding: 20, 
+              borderRadius: 12, 
+              boxShadow: theme.shadows[1], 
+              border: `1px solid ${theme.palette.divider}` 
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <p style={{ fontSize: 12, fontWeight: 500, color: theme.palette.text.secondary }}>Pending</p>
+                  <p style={{ marginTop: 4, fontSize: 24, fontWeight: 700, color: theme.palette.warning.main }}>
+                    {formatNumber(summary.pending_dispensings)}
+                  </p>
+                </div>
+                <Clock style={{ color: theme.palette.warning.main, width: 20, height: 20 }} />
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* Summary */}
-        <div className="bg-white p-6 rounded-lg shadow-md">
-          <h2 className="text-lg font-semibold text-gray-800 mb-4">Summary Statistics</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="bg-gray-50 p-4 rounded-md shadow-sm">
-              <p className="text-sm text-gray-600">Total Transactions</p>
-              <p className="text-2xl font-semibold text-gray-900">{filteredData.length}</p>
+          {/* Charts Section */}
+          <div style={{ 
+            display: 'grid', 
+            gridTemplateColumns: '2fr 1fr', 
+            gap: 24, 
+            marginBottom: 32 
+          }}>
+            {/* Dispensing Trends Chart */}
+            <div style={{ 
+              background: theme.palette.background.paper, 
+              padding: 24, 
+              borderRadius: 16, 
+              boxShadow: theme.shadows[1], 
+              border: `1px solid ${theme.palette.divider}` 
+            }}>
+              <h3 style={{ 
+                fontSize: 18, 
+                fontWeight: 600, 
+                color: theme.palette.text.primary, 
+                marginBottom: 16 
+              }}>
+                Dispensing Trends
+              </h3>
+              <div style={{ height: 300 }}>
+                <Line data={dispensingTrendsData} options={chartOptions} />
+              </div>
             </div>
-            <div className="bg-gray-50 p-4 rounded-md shadow-sm">
-              <p className="text-sm text-gray-600">Unique Customers</p>
-              <p className="text-2xl font-semibold text-gray-900">
-                {new Set(filteredData.map((item) => item.customer.id)).size}
-              </p>
+
+            {/* Top Products */}
+            <div style={{ 
+              background: theme.palette.background.paper, 
+              padding: 24, 
+              borderRadius: 16, 
+              boxShadow: theme.shadows[1], 
+              border: `1px solid ${theme.palette.divider}` 
+            }}>
+              <h3 style={{ 
+                fontSize: 18, 
+                fontWeight: 600, 
+                color: theme.palette.text.primary, 
+                marginBottom: 16 
+              }}>
+                Top Dispensing Products
+              </h3>
+              <div style={{ height: 300 }}>
+                <Doughnut data={topProductsData} options={doughnutOptions} />
+              </div>
             </div>
-            <div className="bg-gray-50 p-4 rounded-md shadow-sm">
-              <p className="text-sm text-gray-600">Total Items Dispensed</p>
-              <p className="text-2xl font-semibold text-gray-900">
-                {filteredData.reduce(
-                  (total, item) => total + item.items.reduce((sum, med) => sum + med.quantity, 0),
-                  0
-                )}
-              </p>
+          </div>
+        </>
+      )}
+
+      {/* Filters */}
+      <div style={{ 
+        background: theme.palette.background.paper, 
+        padding: 20, 
+        borderRadius: 12, 
+        boxShadow: theme.shadows[1], 
+        border: `1px solid ${theme.palette.divider}`,
+        marginBottom: 24
+      }}>
+        <div style={{ 
+          display: 'grid', 
+          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', 
+          gap: 16 
+        }}>
+          {/* Search */}
+          <div>
+            <label style={{ 
+              display: 'block', 
+              fontSize: 12, 
+              fontWeight: 500, 
+              color: theme.palette.text.secondary,
+              marginBottom: 8
+            }}>
+              Search Dispensings
+            </label>
+            <div style={{ position: 'relative' }}>
+              <Search style={{ 
+                position: 'absolute', 
+                left: 12, 
+                top: '50%', 
+                transform: 'translateY(-50%)',
+                color: theme.palette.text.secondary,
+                width: 16,
+                height: 16
+              }} />
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Search by patient name, dispense ID, or products..."
+                style={{
+                  width: '100%',
+                  padding: '8px 12px 8px 36px',
+                  border: `1px solid ${theme.palette.divider}`,
+                  borderRadius: 8,
+                  fontSize: 14,
+                  background: theme.palette.background.default,
+                  color: theme.palette.text.primary
+                }}
+              />
             </div>
+          </div>
+
+          {/* Status Filter */}
+          <div>
+            <label style={{ 
+              display: 'block', 
+              fontSize: 12, 
+              fontWeight: 500, 
+              color: theme.palette.text.secondary,
+              marginBottom: 8
+            }}>
+              Status
+            </label>
+            <select
+              value={selectedStatus}
+              onChange={(e) => setSelectedStatus(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                border: `1px solid ${theme.palette.divider}`,
+                borderRadius: 8,
+                fontSize: 14,
+                background: theme.palette.background.default,
+                color: theme.palette.text.primary
+              }}
+            >
+              <option value="">All Status</option>
+              <option value="completed">Completed</option>
+              <option value="pending">Pending</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
+          </div>
+
+          {/* Payment Status Filter */}
+          <div>
+            <label style={{ 
+              display: 'block', 
+              fontSize: 12, 
+              fontWeight: 500, 
+              color: theme.palette.text.secondary,
+              marginBottom: 8
+            }}>
+              Payment Status
+            </label>
+            <select
+              value={selectedPaymentStatus}
+              onChange={(e) => setSelectedPaymentStatus(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                border: `1px solid ${theme.palette.divider}`,
+                borderRadius: 8,
+                fontSize: 14,
+                background: theme.palette.background.default,
+                color: theme.palette.text.primary
+              }}
+            >
+              <option value="">All Payment Status</option>
+              <option value="paid">Paid</option>
+              <option value="pending">Pending</option>
+              <option value="failed">Failed</option>
+            </select>
+          </div>
+
+          {/* Date Range */}
+          <div>
+            <label style={{ 
+              display: 'block', 
+              fontSize: 12, 
+              fontWeight: 500, 
+              color: theme.palette.text.secondary,
+              marginBottom: 8
+            }}>
+              Start Date
+            </label>
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                border: `1px solid ${theme.palette.divider}`,
+                borderRadius: 8,
+                fontSize: 14,
+                background: theme.palette.background.default,
+                color: theme.palette.text.primary
+              }}
+            />
+          </div>
+
+          <div>
+            <label style={{ 
+              display: 'block', 
+              fontSize: 12, 
+              fontWeight: 500, 
+              color: theme.palette.text.secondary,
+              marginBottom: 8
+            }}>
+              End Date
+            </label>
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                border: `1px solid ${theme.palette.divider}`,
+                borderRadius: 8,
+                fontSize: 14,
+                background: theme.palette.background.default,
+                color: theme.palette.text.primary
+              }}
+            />
+          </div>
+
+          {/* Clear Filters */}
+          <div style={{ display: 'flex', alignItems: 'end' }}>
+            <button
+              onClick={() => {
+                setSearchTerm('');
+                setSelectedStatus('');
+                setSelectedPaymentStatus('');
+                setStartDate('');
+                setEndDate('');
+              }}
+              style={{
+                padding: '8px 16px',
+                background: theme.palette.grey[500],
+                color: theme.palette.grey[100],
+                border: 'none',
+                borderRadius: 8,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8
+              }}
+            >
+              <X style={{ width: 16, height: 16 }} />
+              Clear Filters
+            </button>
           </div>
         </div>
       </div>
+
+      {/* Dispensings Table */}
+      <div style={{
+        background: theme.palette.background.paper,
+        borderRadius: 16,
+        boxShadow: theme.shadows[1],
+        border: `1px solid ${theme.palette.divider}`,
+        overflow: 'hidden'
+      }}>
+        <DataTable
+          columns={columns}
+          data={filteredDispensings}
+          loading={loading}
+          emptyMessage="No dispensing records found. Try adjusting your filters."
+        />
+      </div>
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginTop: 24,
+          padding: 16,
+          background: theme.palette.background.paper,
+          borderRadius: 12,
+          boxShadow: theme.shadows[1],
+          border: `1px solid ${theme.palette.divider}`
+        }}>
+          <p style={{
+            fontSize: 14,
+            color: theme.palette.text.secondary,
+            margin: 0
+          }}>
+            Showing {((currentPage - 1) * itemsPerPage) + 1} to {Math.min(currentPage * itemsPerPage, totalItems)} of {totalItems} dispensings
+          </p>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+              disabled={currentPage === 1}
+              style={{
+                padding: '8px 12px',
+                background: currentPage === 1 ? theme.palette.grey[300] : theme.palette.primary.main,
+                color: currentPage === 1 ? theme.palette.grey[600] : theme.palette.primary.contrastText,
+                border: 'none',
+                borderRadius: 6,
+                cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4
+              }}
+            >
+              <ChevronLeft style={{ width: 16, height: 16 }} />
+              Previous
+            </button>
+            <button
+              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+              disabled={currentPage === totalPages}
+              style={{
+                padding: '8px 12px',
+                background: currentPage === totalPages ? theme.palette.grey[300] : theme.palette.primary.main,
+                color: currentPage === totalPages ? theme.palette.grey[600] : theme.palette.primary.contrastText,
+                border: 'none',
+                borderRadius: 6,
+                cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4
+              }}
+            >
+              Next
+              <ChevronRight style={{ width: 16, height: 16 }} />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
 
-export default DispensingReport;
+export default DispensingReports;

@@ -15,7 +15,11 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'single.session' => \App\Http\Middleware\CheckSingleSession::class,
             'cors' => \App\Http\Middleware\Cors::class,
+            'auth' => \App\Http\Middleware\Authenticate::class,
         ]);
+        
+        // Apply CORS middleware globally
+        $middleware->append(\App\Http\Middleware\Cors::class);
         
         $middleware->web(append: [
             \App\Http\Middleware\Cors::class,

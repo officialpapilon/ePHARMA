@@ -61,12 +61,17 @@ const StoreDashboard = React.lazy(() => import('./pages/store/StoreDashboard'));
 const ItemsManagers = React.lazy(() => import('./pages/store/ItemsManagers'));
 const StockTaking = React.lazy(() => import('./pages/store/StockTaking'));
 const StockAdjustments = React.lazy(() => import('./pages/store/StockAdjustments'));
+const StockTransfer = React.lazy(() => import('./pages/store/StockTransfer'));
+const TestComponent = React.lazy(() => import('./pages/store/TestComponent'));
 const ReceivingStock = React.lazy(() => import('./pages/store/ReceivingStock'));
 const StockTakingReport = React.lazy(() => import('./pages/store/StockTakingReport'));
 const StoreReports = React.lazy(() => import('./pages/store/StoreReports'));
 const WholesaleStockTaking = React.lazy(() => import('./pages/wholesale/StockTaking'));
 const Pos = React.lazy(() => import("./pages/wholesale/Pos"));
+const Orders = React.lazy(() => import("./pages/wholesale/Orders"));
 const Customers = React.lazy(() => import("./pages/wholesale/Customers"));
+const Deliveries = React.lazy(() => import("./pages/wholesale/Deliveries"));
+const Payments = React.lazy(() => import("./pages/wholesale/Payments"));
 const ItemsManager = React.lazy(() => import("./pages/wholesale/ItemsManager"));
 const StockAdjustment = React.lazy(() => import("./pages/wholesale/StockAdjustment"));
 const Report = React.lazy(() => import("./pages/wholesale/Report"));
@@ -115,7 +120,10 @@ const App: React.FC = () => (
                   <Route path="/wholesale/*" element={<PrivateRoute element={<WholesaleLayout />} />}>
                     <Route index element={<WholesaleDashboard />} />
                     <Route path="pos" element={<Pos />} />
+                    <Route path="orders" element={<Orders />} />
                     <Route path="customers" element={<Customers />} />
+                    <Route path="deliveries" element={<Deliveries />} />
+                    <Route path="payments" element={<Payments />} />
                     <Route path="items-manager" element={<ItemsManager />} />
                     <Route path="stock-adjustment" element={<StockAdjustment />} />
                     <Route path="report" element={<Report />} />
@@ -142,8 +150,10 @@ const App: React.FC = () => (
                     <Route path="stock-taking" element={<StockTaking />} />
                     <Route path="stock-taking-report" element={<StockTakingReport />} />
                     <Route path="stock-adjustments" element={<StockAdjustments />} />
+                    <Route path="stock-transfer" element={<StockTransfer />} />
                     <Route path="receiving-stock" element={<ReceivingStock />} />
                     <Route path="store-reports" element={<StoreReports />} />
+                    <Route path="test-component" element={<TestComponent />} />
                   </Route>
 
                   <Route path="/settings/*" element={<PrivateRoute element={<SettingsLayout />} />}>

@@ -54,7 +54,7 @@ const StockStatusReport: React.FC = () => {
     try {
       const token = localStorage.getItem('token');
       if (!token) throw new Error('No authentication token found.');
-      const response = await fetch(`${API_BASE_URL}/api/medicines-cache`, {
+      const response = await fetch(`${API_BASE_URL}/api/medicines-cache?all=true`, {
         headers: {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
@@ -77,9 +77,11 @@ const StockStatusReport: React.FC = () => {
         return;
       }
       const rawData = JSON.parse(text);
-      if (!Array.isArray(rawData)) throw new Error('Expected an array of medicines.');
+      if (!rawData.success || !Array.isArray(rawData.data)) {
+        throw new Error('Expected an array of medicines.');
+      }
 
-      const parsedData: Medicine[] = rawData.map((item: any) => ({
+      const parsedData: Medicine[] = rawData.data.map((item: any) => ({
         product_name: item.product_name || 'Unknown Product',
         product_category: item.product_category || 'N/A',
         current_quantity: parseInt(item.current_quantity, 10) || 0,

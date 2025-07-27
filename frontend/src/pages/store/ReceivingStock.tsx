@@ -1,628 +1,1034 @@
-import React, { useState } from 'react';
-import { Search, Plus, Trash2, Save } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { 
+  Upload, 
+  Download, 
+  Plus, 
+  Search, 
+  RefreshCw, 
+  AlertCircle, 
+  CheckCircle, 
+  Save,
+  Trash2,
+  Package
+} from 'lucide-react';
+import { useTheme } from '@mui/material';
+import { API_BASE_URL } from '../../../constants';
+import DataTable from '../../components/common/DataTable/DataTable';
+import { TableColumn } from '../../../types';
+import UploadExcelDataProvider from '../../components/Stock-Manager/FromExcel';
+import * as XLSX from 'xlsx';
+import { saveAs } from 'file-saver';
 
-interface Supplier {
-  id: string;
-  name: string;
-  contact: string;
-  email: string;
-}
-
-interface Product {
-  id: string;
-  name: string;
-  category: string;
-  stock: number;
-  price: number;
-  unit: string;
-}
-
-interface CartItem {
-  id: string;
-  productId: string;
-  name: string;
+interface StockItem {
+  id?: string;
+  product_id: string;
+  product_name: string;
+  batch_no: string;
   quantity: number;
-  price: number;
-  expiryDate: string;
-  batchNumber: string;
+  unit_price: number;
+  buying_price: number;
+  total_price: number;
+  supplier: string;
+  manufacturer: string;
+  expiry_date: string;
+  received_date: string;
+  notes: string;
+  isNew?: boolean;
 }
 
-const ReceiveStock = () => {
-  const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null);
-  const [suppliers, setSuppliers] = useState<Supplier[]>([
-    { id: '1', name: 'PharmaCorp', contact: '123-456-7890', email: 'orders@pharmacorp.com' },
-    { id: '2', name: 'MediSupply', contact: '234-567-8901', email: 'sales@medisupply.com' },
-    { id: '3', name: 'HealthDist', contact: '345-678-9012', email: 'info@healthdist.com' },
-  ]);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [productSearchTerm, setProductSearchTerm] = useState('');
-  const [cart, setCart] = useState<CartItem[]>([]);
-  const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
-  const [itemDetails, setItemDetails] = useState<{ [key: string]: { quantity: number; buyingPrice: number; expiryDate: string; batchNumber: string } }>({});
-  const [deliveryDate, setDeliveryDate] = useState('');
-  const [invoiceNumber, setInvoiceNumber] = useState('');
+interface Medicine {
+  id: number;
+  product_id: string;
+  product_name: string;
+  current_quantity: number;
+  batch_no: string;
+  product_price: string;
+  product_category: string;
+  expire_date: string;
+}
 
-  const products: Product[] = [
-    { id: '1', name: 'Amoxicillin', stock: 300, price: 90000, category: 'Antibiotics', unit: 'Boxes' },
-    { id: '2', name: 'Azithromycin', stock: 250, price: 120000, category: 'Antibiotics', unit: 'Boxes' },
-    { id: '3', name: 'Chloramphenicol', stock: 200, price: 80000, category: 'Antibiotics', unit: 'Boxes' },
-    { id: '4', name: 'CO-ARTESIANE', stock: 150, price: 135000, category: 'Antimalarials', unit: 'Boxes' },
-    { id: '5', name: 'Diclofenac', stock: 400, price: 68000, category: 'Analgesics', unit: 'Boxes' },
-    { id: '6', name: 'Diclopar', stock: 180, price: 77000, category: 'Analgesics', unit: 'Boxes' },
-    { id: '7', name: 'Eye Ointment Tetracycline', stock: 120, price: 40000, category: 'Ophthalmic', unit: 'Tubes' },
-    { id: '8', name: 'Fluoxetine', stock: 200, price: 115000, category: 'Antidepressants', unit: 'Boxes' },
-    { id: '9', name: 'Turamide', stock: 150, price: 95000, category: 'Antidiabetics', unit: 'Boxes' },
-    { id: '10', name: 'Inj Chlorpromazine', stock: 100, price: 160000, category: 'Antipsychotics', unit: 'Vials' },
+const ReceivingStock: React.FC = () => {
+  const theme = useTheme();
+  const [stockItems, setStockItems] = useState<StockItem[]>([]);
+  const [medicines, setMedicines] = useState<Medicine[]>([]);
+  const [filteredItems, setFilteredItems] = useState<StockItem[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  
+  // Form states
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+  const [newItem, setNewItem] = useState<StockItem>({
+    product_id: '',
+    product_name: '',
+    batch_no: '',
+    quantity: 0,
+    unit_price: 0,
+    buying_price: 0,
+    total_price: 0,
+    supplier: '',
+    manufacturer: '',
+    expiry_date: '',
+    received_date: new Date().toISOString().split('T')[0],
+    notes: '',
+    isNew: true
+  });
+
+  useEffect(() => {
+    fetchMedicines();
+  }, []);
+
+  useEffect(() => {
+    filterItems();
+  }, [stockItems, searchTerm]);
+
+  const filterItems = () => {
+    let filtered = stockItems;
+
+    if (searchTerm) {
+      filtered = filtered.filter(item =>
+        item.product_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.batch_no.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.supplier.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+
+    setFilteredItems(filtered);
+  };
+
+  const fetchMedicines = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) throw new Error('No authentication token found');
+
+      const response = await fetch(`${API_BASE_URL}/api/medicines-cache`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch medicines: ${response.status}`);
+      }
+
+      const result = await response.json();
+      if (result.success && Array.isArray(result.data)) {
+        setMedicines(result.data);
+      } else {
+        setMedicines([]);
+      }
+    } catch (err: any) {
+      console.error('Fetch medicines error:', err);
+      setError(err.message);
+      setMedicines([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAddItem = () => {
+    if (!newItem.product_id || !newItem.quantity || !newItem.batch_no) {
+      setError('Please fill in all required fields');
+      return;
+    }
+
+    const selectedMedicine = medicines.find(m => m.product_id === newItem.product_id);
+    if (!selectedMedicine) {
+      setError('Selected product not found');
+      return;
+    }
+
+    const item: StockItem = {
+      ...newItem,
+      id: `new-${Date.now()}`,
+      product_name: selectedMedicine.product_name,
+      total_price: newItem.quantity * newItem.unit_price,
+      isNew: true
+    };
+
+    setStockItems(prev => [...prev, item]);
+    setNewItem({
+      product_id: '',
+      product_name: '',
+      batch_no: '',
+      quantity: 0,
+      unit_price: 0,
+      buying_price: 0,
+      total_price: 0,
+      supplier: '',
+      manufacturer: '',
+      expiry_date: '',
+      received_date: new Date().toISOString().split('T')[0],
+      notes: '',
+      isNew: true
+    });
+    setIsAddModalOpen(false);
+    setSuccess('Item added successfully');
+    setTimeout(() => setSuccess(null), 3000);
+  };
+
+  const handleRemoveItem = (id: string) => {
+    setStockItems(prev => prev.filter(item => item.id !== id));
+    setSuccess('Item removed successfully');
+    setTimeout(() => setSuccess(null), 3000);
+  };
+
+  const handleSaveAll = async () => {
+    if (stockItems.length === 0) {
+      setError('No items to save');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) throw new Error('No authentication token found');
+
+      const user = JSON.parse(localStorage.getItem('user') || '{}');
+
+      // Process each item
+      for (const item of stockItems) {
+        // Update medicines cache
+        const existingMedicine = medicines.find(m => m.product_id === item.product_id);
+        
+        if (existingMedicine) {
+          // Update existing medicine
+          const response = await fetch(`${API_BASE_URL}/api/medicines-cache/${existingMedicine.id}`, {
+            method: 'PUT',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'ngrok-skip-browser-warning': 'true',
+            },
+            body: JSON.stringify({
+              current_quantity: existingMedicine.current_quantity + item.quantity,
+              product_price: item.unit_price.toString(),
+              expire_date: item.expiry_date,
+              batch_no: item.batch_no
+            }),
+          });
+
+          if (!response.ok) {
+            throw new Error(`Failed to update medicine: ${item.product_name}`);
+          }
+        } else {
+          // Create new medicine entry
+          const response = await fetch(`${API_BASE_URL}/api/medicines-cache`, {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'ngrok-skip-browser-warning': 'true',
+            },
+            body: JSON.stringify({
+              product_id: item.product_id,
+              product_name: item.product_name,
+              current_quantity: item.quantity,
+              product_price: item.unit_price.toString(),
+              buying_price: item.buying_price.toString(),
+              product_category: 'General',
+              expire_date: item.expiry_date,
+              batch_no: item.batch_no
+            }),
+          });
+
+          if (!response.ok) {
+            throw new Error(`Failed to create medicine: ${item.product_name}`);
+          }
+        }
+
+        // Create stock adjustment record
+        const adjustmentResponse = await fetch(`${API_BASE_URL}/api/stock-adjustments`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'ngrok-skip-browser-warning': 'true',
+          },
+          body: JSON.stringify({
+            product_id: item.product_id,
+            batch_no: item.batch_no,
+            adjustment_date: item.received_date,
+            adjustment_type: 'increase',
+            quantity_adjusted: item.quantity,
+            reason: `Stock received from ${item.supplier}. ${item.notes}`,
+            created_by: String(user.id || '1')
+          }),
+        });
+
+        if (!adjustmentResponse.ok) {
+          console.warn(`Failed to create adjustment record for: ${item.product_name}`);
+        }
+      }
+
+      setStockItems([]);
+      await fetchMedicines();
+      setSuccess(`Successfully processed ${stockItems.length} items`);
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (err: any) {
+      console.error('Save error:', err);
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleExportTemplate = () => {
+    const template = [
+      {
+        'Product ID': 'MED001',
+        'Product Name': 'Paracetamol 500mg',
+        'Batch Number': 'BATCH2025001',
+        'Quantity': 100,
+        'Unit Price': 50.00,
+        'Total Price': 5000.00,
+        'Supplier': 'ABC Pharmaceuticals',
+        'Expiry Date': '2026-12-31',
+        'Received Date': new Date().toISOString().split('T')[0],
+        'Notes': 'Sample entry'
+      }
+    ];
+
+    const worksheet = XLSX.utils.json_to_sheet(template);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Stock Template');
+
+    const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+    const data = new Blob([excelBuffer], { type: 'application/octet-stream' });
+
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(data);
+    link.download = 'Stock_Receiving_Template.xlsx';
+    link.click();
+  };
+
+  const calculateTotal = () => {
+    return stockItems.reduce((sum, item) => sum + item.total_price, 0);
+  };
+
+  const calculateTotalQuantity = () => {
+    return stockItems.reduce((sum, item) => sum + item.quantity, 0);
+  };
+
+  // DataTable columns
+  const columns: TableColumn[] = [
+    {
+      key: 'product_name',
+      header: 'Product',
+      sortable: true,
+      width: '20%'
+    },
+    {
+      key: 'batch_no',
+      header: 'Batch',
+      sortable: true,
+      width: '12%'
+    },
+    {
+      key: 'quantity',
+      header: 'Quantity',
+      sortable: true,
+      width: '8%',
+      render: (row: any) => {
+        if (!row) return '-';
+        return (
+          <span style={{ fontWeight: 600, color: theme.palette.text.primary }}>
+            {row.quantity}
+          </span>
+        );
+      }
+    },
+    {
+      key: 'unit_price',
+      header: 'Unit Price',
+      sortable: true,
+      width: '12%',
+      render: (row: any) => {
+        if (!row) return '-';
+        return `Tsh ${row.unit_price?.toLocaleString() || '0'}`;
+      }
+    },
+    {
+      key: 'buying_price',
+      header: 'Buying Price',
+      sortable: true,
+      width: '12%',
+      render: (row: any) => {
+        if (!row) return '-';
+        return `Tsh ${row.buying_price?.toLocaleString() || '0'}`;
+      }
+    },
+    {
+      key: 'manufacturer',
+      header: 'Manufacturer',
+      sortable: true,
+      width: '12%'
+    },
+    {
+      key: 'supplier',
+      header: 'Supplier',
+      sortable: true,
+      width: '12%'
+    },
+    {
+      key: 'actions',
+      header: 'Actions',
+      sortable: false,
+      width: '8%',
+      render: (row: any) => {
+        if (!row) return '-';
+        return (
+          <button
+            onClick={() => handleRemoveItem(row.id!)}
+            style={{
+              padding: '4px 8px',
+              background: theme.palette.error.main,
+              color: theme.palette.error.contrastText,
+              border: 'none',
+              borderRadius: 4,
+              cursor: 'pointer',
+              fontSize: 12
+            }}
+          >
+            <Trash2 style={{ width: 12, height: 12 }} />
+          </button>
+        );
+      }
+    }
   ];
 
-  const filteredSuppliers = suppliers.filter(supplier =>
-    supplier.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    supplier.contact.includes(searchTerm) ||
-    supplier.email.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
-  const filteredProducts = products.filter(product =>
-    product.name.toLowerCase().includes(productSearchTerm.toLowerCase()) ||
-    product.category.toLowerCase().includes(productSearchTerm.toLowerCase())
-  );
-
-  const addNewSupplier = () => {
-    const newSupplierName = prompt('Enter new supplier name:');
-    const newSupplierContact = prompt('Enter supplier contact:');
-    const newSupplierEmail = prompt('Enter supplier email:');
-    if (newSupplierName && newSupplierContact && newSupplierEmail) {
-      const newSupplier = {
-        id: (suppliers.length + 1).toString(),
-        name: newSupplierName,
-        contact: newSupplierContact,
-        email: newSupplierEmail,
-      };
-      setSuppliers([...suppliers, newSupplier]);
-      setSelectedSupplier(newSupplier);
-    }
-  };
-
-  const addToCart = () => {
-    selectedProducts.forEach(productId => {
-      const product = products.find(p => p.id === productId);
-      const details = itemDetails[productId] || { quantity: 1, buyingPrice: 0, expiryDate: '', batchNumber: '' };
-      if (product && details.quantity > 0 && details.expiryDate && details.batchNumber && details.buyingPrice > 0) {
-        const newItem = {
-          id: Date.now().toString() + productId,
-          productId,
-          name: product.name,
-          quantity: details.quantity,
-          price: details.buyingPrice,
-          expiryDate: details.expiryDate,
-          batchNumber: details.batchNumber,
-        };
-        setCart(prevCart => [...prevCart, newItem]);
-      }
-    });
-    setSelectedProducts([]);
-    setItemDetails({});
-  };
-
-  const removeFromCart = (id: string) => {
-    setCart(cart.filter(item => item.id !== id));
-  };
-
-  const getSubtotal = (item: CartItem) => item.quantity * item.price;
-
-  const saveTransaction = () => {
-    if (selectedSupplier && cart.length > 0) {
-      const transaction = {
-        supplier: selectedSupplier.name,
-        items: cart,
-        deliveryDate,
-        invoiceNumber,
-        date: new Date().toISOString(),
-      };
-      console.log('Transaction saved:', transaction);
-      alert('Transaction saved successfully!');
-      setCart([]);
-      setDeliveryDate('');
-      setInvoiceNumber('');
-    } else {
-      alert('Please select a supplier and add items before saving.');
-    }
-  };
-
   return (
-    <div className="receive-stock-container">
-      <h1>Receive Stock</h1>
-
-      <div className="main-grid">
-        {/* Left Section - Supplier */}
-        <div className="left-section">
-          <div className="card">
-            <h2>Supplier</h2>
-            <div className="form-group">
-              <label>Supplier *</label>
-              <div style={{ display: 'flex', gap: '10px' }}>
-                <select
-                  value={selectedSupplier?.id || ''}
-                  onChange={e => setSelectedSupplier(suppliers.find(s => s.id === e.target.value) || null)}
-                  className="select-input"
-                >
-                  <option value="">Select</option>
-                  {filteredSuppliers.map(supplier => (
-                    <option key={supplier.id} value={supplier.id}>{supplier.name}</option>
-                  ))}
-                </select>
-                <button onClick={addNewSupplier} className="add-supplier-btn">
-                  <Plus size={14} /> Add Supplier
-                </button>
-              </div>
-            </div>
-            <div className="form-group">
-              <label>Delivery Date *</label>
-              <input
-                type="date"
-                value={deliveryDate}
-                onChange={e => setDeliveryDate(e.target.value)}
-                className="date-input"
-              />
-            </div>
-            <div className="form-group">
-              <label>Invoice Number</label>
-              <input
-                type="text"
-                value={invoiceNumber}
-                onChange={e => setInvoiceNumber(e.target.value)}
-                className="text-input"
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Right Section - Select Item */}
-        <div className="right-section">
-          <div className="card">
-            <h2>Select Item</h2>
-            <div className="search-container">
-              <Search size={18} />
-              <input
-                type="text"
-                placeholder="Search"
-                value={productSearchTerm}
-                onChange={e => setProductSearchTerm(e.target.value)}
-                className="search-input"
-              />
-            </div>
-            <div className="scroll-container item-list">
-              {filteredProducts.map(product => (
-                <div key={product.id} className="item-option">
-                  <input
-                    type="checkbox"
-                    name="selectedProduct"
-                    id={product.id}
-                    checked={selectedProducts.includes(product.id)}
-                    onChange={e => {
-                      if (e.target.checked) {
-                        setSelectedProducts([...selectedProducts, product.id]);
-                        setItemDetails(prev => ({
-                          ...prev,
-                          [product.id]: { quantity: 1, buyingPrice: 0, expiryDate: '', batchNumber: '' },
-                        }));
-                      } else {
-                        setSelectedProducts(selectedProducts.filter(id => id !== product.id));
-                        setItemDetails(prev => {
-                          const { [product.id]: _, ...rest } = prev;
-                          return rest;
-                        });
-                      }
-                    }}
-                    className="checkbox-input"
-                  />
-                  <label htmlFor={product.id} className="item-label">{product.name}</label>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Bottom Section - Item Details */}
-      <div className="bottom-section">
-        <div className="card item-details">
-          <h2>Item Details</h2>
-          {selectedProducts.map(productId => {
-            const product = products.find(p => p.id === productId);
-            const details = itemDetails[productId] || { quantity: 1, buyingPrice: 0, expiryDate: '', batchNumber: '' };
-            return (
-              <div key={productId} className="item-detail-form">
-                <div className="form-grid">
-                  <div className="form-group">
-                    <label>Selected Item *</label>
-                    <input
-                      type="text"
-                      value={product?.name || ''}
-                      readOnly
-                      className="read-only text-input"
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label>Unit of Measure</label>
-                    <input
-                      type="text"
-                      value={product?.unit || ''}
-                      readOnly
-                      className="read-only text-input"
-                    />
-                  </div>
-                  <div className="form-group required">
-                    <label>Quantity *</label>
-                    <input
-                      type="number"
-                      min="1"
-                      value={details.quantity}
-                      onChange={e => setItemDetails(prev => ({
-                        ...prev,
-                        [productId]: { ...prev[productId], quantity: Math.max(1, parseInt(e.target.value) || 1) },
-                      }))}
-                      className="number-input"
-                    />
-                  </div>
-                  <div className="form-group required">
-                    <label>Buying Price (TSh) *</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={details.buyingPrice}
-                      onChange={e => setItemDetails(prev => ({
-                        ...prev,
-                        [productId]: { ...prev[productId], buyingPrice: parseFloat(e.target.value) || 0 },
-                      }))}
-                      className="number-input"
-                    />
-                  </div>
-                  <div className="form-group required">
-                    <label>Expiry Date *</label>
-                    <input
-                      type="date"
-                      value={details.expiryDate}
-                      onChange={e => setItemDetails(prev => ({
-                        ...prev,
-                        [productId]: { ...prev[productId], expiryDate: e.target.value },
-                      }))}
-                      className="date-input"
-                    />
-                  </div>
-                  <div className="form-group required">
-                    <label>Batch Number *</label>
-                    <input
-                      type="text"
-                      value={details.batchNumber}
-                      onChange={e => setItemDetails(prev => ({
-                        ...prev,
-                        [productId]: { ...prev[productId], batchNumber: e.target.value },
-                      }))}
-                      className="text-input"
-                    />
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-          <button className="add-btn" onClick={addToCart}>
-            <Plus size={14} /> Add Item
+    <div style={{ 
+      padding: '16px', 
+      background: theme.palette.background.default, 
+      minHeight: '100vh', 
+      width: '100%', 
+      maxWidth: '100vw', 
+      boxSizing: 'border-box' 
+    }}>
+      {/* Header */}
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'space-between', 
+        alignItems: 'center', 
+        marginBottom: 24 
+      }}>
+        <h2 style={{ 
+          fontSize: 24, 
+          fontWeight: 700, 
+          color: theme.palette.text.primary 
+        }}>
+          Stock Receiving
+        </h2>
+        <div style={{ display: 'flex', gap: 12 }}>
+          <button
+            onClick={handleExportTemplate}
+            style={{
+              padding: '8px 16px',
+              background: theme.palette.info.main,
+              color: theme.palette.info.contrastText,
+              border: 'none',
+              borderRadius: 8,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8
+            }}
+          >
+            <Download style={{ width: 16, height: 16 }} />
+            Download Template
+          </button>
+          <button
+            onClick={() => setIsAddModalOpen(true)}
+            style={{
+              padding: '8px 16px',
+              background: theme.palette.success.main,
+              color: theme.palette.success.contrastText,
+              border: 'none',
+              borderRadius: 8,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8
+            }}
+          >
+            <Plus style={{ width: 16, height: 16 }} />
+            Add Item
           </button>
         </div>
       </div>
 
-      {/* Bottom Section - Stock Receiving History */}
-      <div className="bottom-section">
-        <div className="card">
-          <h2>Stock Receiving History</h2>
-          <div className="table-container">
-            <table>
-              <thead>
-                <tr>
-                  <th>Supplier</th>
-                  <th>S/N</th>
-                  <th>Brand Name</th>
-                  <th>UoM</th>
-                  <th>Quantity</th>
-                  <th>Batch Number</th>
-                  <th>Buying Price (TSh)</th>
-                  <th>Expiry Date</th>
-                  <th>Subtotal (TSh)</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {cart.length === 0 ? (
-                  <tr>
-                    <td colSpan={10}>No items added</td>
-                  </tr>
-                ) : (
-                  cart.map((item, index) => (
-                    <tr key={item.id}>
-                      <td>{selectedSupplier?.name || 'N/A'}</td>
-                      <td>{index + 1}</td>
-                      <td>{item.name}</td>
-                      <td>{products.find(p => p.id === item.productId)?.unit || ''}</td>
-                      <td>{item.quantity}</td>
-                      <td>{item.batchNumber}</td>
-                      <td>{item.price.toLocaleString('en-TZ', { style: 'currency', currency: 'TZS' })}</td>
-                      <td>{item.expiryDate}</td>
-                      <td>{getSubtotal(item).toLocaleString('en-TZ', { style: 'currency', currency: 'TZS' })}</td>
-                      <td>
-                        <button className="remove-btn" onClick={() => removeFromCart(item.id)}>
-                          <Trash2 size={16} />
-                        </button>
-                        {index === cart.length - 1 && (
-                          <button className="save-btn" onClick={saveTransaction}>
-                            <Save size={16} /> Save
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+      {/* Success/Error Messages */}
+      {success && (
+        <div style={{
+          background: theme.palette.success.light,
+          border: `1px solid ${theme.palette.success.main}`,
+          color: theme.palette.success.dark,
+          padding: 12,
+          borderRadius: 8,
+          marginBottom: 16,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8
+        }}>
+          <CheckCircle style={{ width: 16, height: 16 }} />
+          {success}
+        </div>
+      )}
+
+      {error && (
+        <div style={{
+          background: theme.palette.error.light,
+          border: `1px solid ${theme.palette.error.main}`,
+          color: theme.palette.error.dark,
+          padding: 12,
+          borderRadius: 8,
+          marginBottom: 16,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8
+        }}>
+          <AlertCircle style={{ width: 16, height: 16 }} />
+          {error}
+        </div>
+      )}
+
+      {/* Summary Cards */}
+      <div style={{ 
+        display: 'grid', 
+        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', 
+        gap: 16, 
+        marginBottom: 24 
+      }}>
+        <div style={{ 
+          background: theme.palette.background.paper, 
+          padding: 20, 
+          borderRadius: 12, 
+          boxShadow: theme.shadows[1],
+          border: `1px solid ${theme.palette.divider}`,
+          textAlign: 'center'
+        }}>
+          <Package style={{ 
+            width: 32, 
+            height: 32, 
+            color: theme.palette.primary.main,
+            marginBottom: 8
+          }} />
+          <p style={{ 
+            fontSize: 24, 
+            fontWeight: 700, 
+            color: theme.palette.text.primary,
+            margin: '8px 0 4px 0'
+          }}>
+            {stockItems.length}
+          </p>
+          <p style={{ 
+            fontSize: 14, 
+            color: theme.palette.text.secondary,
+            margin: 0
+          }}>
+            Total Items
+          </p>
+        </div>
+
+        <div style={{ 
+          background: theme.palette.background.paper, 
+          padding: 20, 
+          borderRadius: 12, 
+          boxShadow: theme.shadows[1],
+          border: `1px solid ${theme.palette.divider}`,
+          textAlign: 'center'
+        }}>
+          <Package style={{ 
+            width: 32, 
+            height: 32, 
+            color: theme.palette.success.main,
+            marginBottom: 8
+          }} />
+          <p style={{ 
+            fontSize: 24, 
+            fontWeight: 700, 
+            color: theme.palette.text.primary,
+            margin: '8px 0 4px 0'
+          }}>
+            {calculateTotalQuantity()}
+          </p>
+          <p style={{ 
+            fontSize: 14, 
+            color: theme.palette.text.secondary,
+            margin: 0
+          }}>
+            Total Quantity
+          </p>
+        </div>
+
+        <div style={{ 
+          background: theme.palette.background.paper, 
+          padding: 20, 
+          borderRadius: 12, 
+          boxShadow: theme.shadows[1],
+          border: `1px solid ${theme.palette.divider}`,
+          textAlign: 'center'
+        }}>
+          <Package style={{ 
+            width: 32, 
+            height: 32, 
+            color: theme.palette.warning.main,
+            marginBottom: 8
+          }} />
+          <p style={{ 
+            fontSize: 24, 
+            fontWeight: 700, 
+            color: theme.palette.text.primary,
+            margin: '8px 0 4px 0'
+          }}>
+            Tsh {calculateTotal().toLocaleString()}
+          </p>
+          <p style={{ 
+            fontSize: 14, 
+            color: theme.palette.text.secondary,
+            margin: 0
+          }}>
+            Total Value
+          </p>
         </div>
       </div>
 
-      <style jsx>{`
-        .receive-stock-container {
-          max-width: 100%;
-          margin: 0;
-          padding: 0;
-          font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-          background: #f5f6fa;
-          border-top: 5px solid #e67e22;
-        }
-        
-        h1 {
-          color: #2c3e50;
-          text-align: center;
-          margin: 10px 0;
-          font-size: 1.8em;
-          padding: 10px 0;
-          background: #fff;
-        }
+      {/* Search and Actions */}
+      <div style={{ 
+        background: theme.palette.background.paper, 
+        padding: 24, 
+        borderRadius: 16, 
+        boxShadow: theme.shadows[1], 
+        marginBottom: 24,
+        border: `1px solid ${theme.palette.divider}`
+      }}>
+        <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+          {/* Search */}
+          <div style={{ flex: 1, minWidth: 200 }}>
+            <div style={{ position: 'relative' }}>
+              <Search style={{ 
+                position: 'absolute', 
+                left: 12, 
+                top: '50%', 
+                transform: 'translateY(-50%)', 
+                color: theme.palette.text.secondary,
+                width: 16,
+                height: 16
+              }} />
+              <input
+                type="text"
+                placeholder="Search items..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '12px 12px 12px 40px',
+                  border: `1px solid ${theme.palette.divider}`,
+                  borderRadius: 8,
+                  background: theme.palette.background.default,
+                  color: theme.palette.text.primary,
+                  fontSize: 14
+                }}
+              />
+            </div>
+          </div>
 
-        .main-grid {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 20px;
-          margin: 0 20px 20px 20px;
-          padding: 0;
-        }
+          {/* Action Buttons */}
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              onClick={() => setIsUploadModalOpen(true)}
+              style={{
+                padding: '8px 16px',
+                background: theme.palette.info.main,
+                color: theme.palette.info.contrastText,
+                border: 'none',
+                borderRadius: 8,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8
+              }}
+            >
+              <Upload style={{ width: 16, height: 16 }} />
+              Import Excel
+            </button>
+            <button
+              onClick={handleSaveAll}
+              disabled={loading || stockItems.length === 0}
+              style={{
+                padding: '8px 16px',
+                background: theme.palette.success.main,
+                color: theme.palette.success.contrastText,
+                border: 'none',
+                borderRadius: 8,
+                cursor: (loading || stockItems.length === 0) ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                opacity: (loading || stockItems.length === 0) ? 0.7 : 1
+              }}
+            >
+              <Save style={{ width: 16, height: 16 }} />
+              {loading ? 'Saving...' : 'Save All Items'}
+            </button>
+          </div>
+        </div>
 
-        .card {
-          background: #fff;
-          border-radius: 8px;
-          box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-          padding: 15px;
-          margin: 0;
-        }
+        {/* Results Summary */}
+        <div style={{ 
+          marginTop: 16, 
+          padding: '12px 0', 
+          borderTop: `1px solid ${theme.palette.divider}`,
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center'
+        }}>
+          <p style={{ 
+            fontSize: 14, 
+            color: theme.palette.text.secondary,
+            margin: 0
+          }}>
+            Showing {filteredItems.length} of {stockItems.length} items
+            {searchTerm && ` matching "${searchTerm}"`}
+          </p>
+        </div>
+      </div>
 
-        h2 {
-          color: #34495e;
-          margin: 0 0 15px 0;
-          font-size: 1.3em;
-          border-bottom: 1px solid #ecf0f1;
-          padding-bottom: 10px;
-        }
+      {/* Items Table */}
+      <div style={{ 
+        background: theme.palette.background.paper, 
+        borderRadius: 16, 
+        boxShadow: theme.shadows[1],
+        border: `1px solid ${theme.palette.divider}`,
+        overflow: 'hidden'
+      }}>
+        <DataTable
+          columns={columns}
+          data={filteredItems}
+          loading={loading}
+          emptyMessage="No items to receive. Add some items to get started."
+        />
+      </div>
 
-        .form-group {
-          margin: 10px 0;
-        }
+      {/* Add Item Modal */}
+      {isAddModalOpen && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{
+            background: theme.palette.background.paper,
+            borderRadius: 16,
+            padding: 24,
+            width: '90%',
+            maxWidth: 500,
+            maxHeight: '90vh',
+            overflowY: 'auto'
+          }}>
+            <div style={{ 
+              display: 'flex', 
+              justifyContent: 'space-between', 
+              alignItems: 'center', 
+              marginBottom: 24 
+            }}>
+              <h3 style={{ 
+                fontSize: 20, 
+                fontWeight: 600, 
+                color: theme.palette.text.primary,
+                margin: 0
+              }}>
+                Add Stock Item
+              </h3>
+              <button
+                onClick={() => setIsAddModalOpen(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: theme.palette.text.secondary
+                }}
+              >
+                ✕
+              </button>
+            </div>
 
-        .form-group label {
-          display: block;
-          margin: 5px 0;
-          color: #34495e;
-          font-weight: 500;
-        }
+            <div style={{ display: 'grid', gap: 16 }}>
+              {/* Product Selection */}
+              <div>
+                <label style={{ 
+                  display: 'block', 
+                  marginBottom: 8, 
+                  fontWeight: 500, 
+                  color: theme.palette.text.primary 
+                }}>
+                  Product *
+                </label>
+                <select
+                  value={newItem.product_id}
+                  onChange={(e) => setNewItem(prev => ({ ...prev, product_id: e.target.value }))}
+                  style={{
+                    width: '100%',
+                    padding: '12px',
+                    border: `1px solid ${theme.palette.divider}`,
+                    borderRadius: 8,
+                    background: theme.palette.background.default,
+                    color: theme.palette.text.primary,
+                    fontSize: 14
+                  }}
+                >
+                  <option value="">Select a product</option>
+                  {medicines.map(medicine => (
+                    <option key={medicine.id} value={medicine.product_id}>
+                      {medicine.product_name} (Current: {medicine.current_quantity})
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-        .select-input, .text-input, .number-input, .date-input {
-          width: 100%;
-          padding: 8px;
-          border: 1px solid #ddd;
-          border-radius: 4px;
-          box-sizing: border-box;
-          font-size: 0.95em;
-          transition: border-color 0.3s;
-        }
+              {/* Batch Number */}
+              <div>
+                <label style={{ 
+                  display: 'block', 
+                  marginBottom: 8, 
+                  fontWeight: 500, 
+                  color: theme.palette.text.primary 
+                }}>
+                  Batch Number *
+                </label>
+                <input
+                  type="text"
+                  value={newItem.batch_no}
+                  onChange={(e) => setNewItem(prev => ({ ...prev, batch_no: e.target.value }))}
+                  placeholder="Enter batch number"
+                  style={{
+                    width: '100%',
+                    padding: '12px',
+                    border: `1px solid ${theme.palette.divider}`,
+                    borderRadius: 8,
+                    background: theme.palette.background.default,
+                    color: theme.palette.text.primary,
+                    fontSize: 14
+                  }}
+                />
+              </div>
 
-        .select-input:focus, .text-input:focus, .number-input:focus, .date-input:focus {
-          border-color: #3498db;
-          outline: none;
-        }
+              {/* Quantity and Unit Price */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                <div>
+                  <label style={{ 
+                    display: 'block', 
+                    marginBottom: 8, 
+                    fontWeight: 500, 
+                    color: theme.palette.text.primary 
+                  }}>
+                    Quantity *
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={newItem.quantity}
+                    onChange={(e) => setNewItem(prev => ({ 
+                      ...prev, 
+                      quantity: parseInt(e.target.value) || 0 
+                    }))}
+                    placeholder="Enter quantity"
+                    style={{
+                      width: '100%',
+                      padding: '12px',
+                      border: `1px solid ${theme.palette.divider}`,
+                      borderRadius: 8,
+                      background: theme.palette.background.default,
+                      color: theme.palette.text.primary,
+                      fontSize: 14
+                    }}
+                  />
+                </div>
+                <div>
+                  <label style={{ 
+                    display: 'block', 
+                    marginBottom: 8, 
+                    fontWeight: 500, 
+                    color: theme.palette.text.primary 
+                  }}>
+                    Unit Price (Tsh) *
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={newItem.unit_price}
+                    onChange={(e) => setNewItem(prev => ({ 
+                      ...prev, 
+                      unit_price: parseFloat(e.target.value) || 0 
+                    }))}
+                    placeholder="Enter unit price"
+                    style={{
+                      width: '100%',
+                      padding: '12px',
+                      border: `1px solid ${theme.palette.divider}`,
+                      borderRadius: 8,
+                      background: theme.palette.background.default,
+                      color: theme.palette.text.primary,
+                      fontSize: 14
+                    }}
+                  />
+                </div>
+              </div>
 
-        .required label:after {
-          content: ' *';
-          color: #e74c3c;
-        }
+              {/* Supplier */}
+              <div>
+                <label style={{ 
+                  display: 'block', 
+                  marginBottom: 8, 
+                  fontWeight: 500, 
+                  color: theme.palette.text.primary 
+                }}>
+                  Supplier
+                </label>
+                <input
+                  type="text"
+                  value={newItem.supplier}
+                  onChange={(e) => setNewItem(prev => ({ ...prev, supplier: e.target.value }))}
+                  placeholder="Enter supplier name"
+                  style={{
+                    width: '100%',
+                    padding: '12px',
+                    border: `1px solid ${theme.palette.divider}`,
+                    borderRadius: 8,
+                    background: theme.palette.background.default,
+                    color: theme.palette.text.primary,
+                    fontSize: 14
+                  }}
+                />
+              </div>
 
-        .read-only {
-          background: #f9f9f9;
-          color: #7f8c8d;
-        }
+              {/* Expiry Date */}
+              <div>
+                <label style={{ 
+                  display: 'block', 
+                  marginBottom: 8, 
+                  fontWeight: 500, 
+                  color: theme.palette.text.primary 
+                }}>
+                  Expiry Date
+                </label>
+                <input
+                  type="date"
+                  value={newItem.expiry_date}
+                  onChange={(e) => setNewItem(prev => ({ ...prev, expiry_date: e.target.value }))}
+                  style={{
+                    width: '100%',
+                    padding: '12px',
+                    border: `1px solid ${theme.palette.divider}`,
+                    borderRadius: 8,
+                    background: theme.palette.background.default,
+                    color: theme.palette.text.primary,
+                    fontSize: 14
+                  }}
+                />
+              </div>
 
-        .search-container {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          margin: 10px 0;
-          padding: 8px;
-          background: #f1f2f6;
-          border-radius: 4px;
-        }
+              {/* Notes */}
+              <div>
+                <label style={{ 
+                  display: 'block', 
+                  marginBottom: 8, 
+                  fontWeight: 500, 
+                  color: theme.palette.text.primary 
+                }}>
+                  Notes
+                </label>
+                <textarea
+                  value={newItem.notes}
+                  onChange={(e) => setNewItem(prev => ({ ...prev, notes: e.target.value }))}
+                  placeholder="Enter any additional notes"
+                  rows={3}
+                  style={{
+                    width: '100%',
+                    padding: '12px',
+                    border: `1px solid ${theme.palette.divider}`,
+                    borderRadius: 8,
+                    background: theme.palette.background.default,
+                    color: theme.palette.text.primary,
+                    fontSize: 14,
+                    resize: 'vertical'
+                  }}
+                />
+              </div>
 
-        .search-input {
-          border: none;
-          background: transparent;
-          width: 100%;
-          font-size: 0.95em;
-        }
+              {/* Action Buttons */}
+              <div style={{ 
+                display: 'flex', 
+                gap: 12, 
+                justifyContent: 'flex-end',
+                marginTop: 24,
+                paddingTop: 16,
+                borderTop: `1px solid ${theme.palette.divider}`
+              }}>
+                <button
+                  onClick={() => setIsAddModalOpen(false)}
+                  style={{
+                    padding: '12px 24px',
+                    background: theme.palette.grey[300],
+                    color: theme.palette.text.primary,
+                    border: 'none',
+                    borderRadius: 8,
+                    cursor: 'pointer'
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleAddItem}
+                  style={{
+                    padding: '12px 24px',
+                    background: theme.palette.primary.main,
+                    color: theme.palette.primary.contrastText,
+                    border: 'none',
+                    borderRadius: 8,
+                    cursor: 'pointer'
+                  }}
+                >
+                  Add Item
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
-        .search-input:focus {
-          outline: none;
-        }
-
-        .scroll-container {
-          max-height: 300px;
-          overflow-y: auto;
-          padding: 0;
-        }
-
-        .item-list {
-          display: flex;
-          flex-direction: column;
-        }
-
-        .item-option {
-          display: flex;
-          align-items: center;
-          padding: 8px 0;
-          border-bottom: 1px solid #eee;
-        }
-
-        .checkbox-input {
-          margin: 0 8px 0 0;
-          transform: scale(0.9);
-        }
-
-        .item-label {
-          flex: 1;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          font-size: 0.95em;
-          color: #2c3e50;
-        }
-
-        .item-detail-form {
-          margin-bottom: 20px;
-          border: 1px solid #eee;
-          padding: 10px;
-          border-radius: 4px;
-        }
-
-        .form-grid {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 15px;
-          margin: 10px 0;
-        }
-
-        .add-btn {
-          width: auto;
-          background: #3498db;
-          padding: 6px 12px;
-          color: white;
-          border: none;
-          border-radius: 4px;
-          cursor: pointer;
-          font-size: 0.9em;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 5px;
-          float: right;
-        }
-
-        .add-supplier-btn {
-          background: #2ecc71;
-          padding: 6px 12px;
-          color: white;
-          border: none;
-          border-radius: 4px;
-          cursor: pointer;
-          font-size: 0.9em;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 5px;
-        }
-
-        .add-supplier-btn:hover {
-          background: #27ae60;
-        }
-
-        .add-btn:hover {
-          background: #2980b9;
-        }
-
-        .table-container {
-          overflow-x: auto;
-          margin-top: 10px;
-        }
-
-        table {
-          width: 100%;
-          border-collapse: collapse;
-          font-size: 0.95em;
-        }
-
-        th, td {
-          padding: 10px;
-          text-align: left;
-          border-bottom: 1px solid #ddd;
-        }
-
-        th {
-          background: #f1f2f6;
-          color: #34495e;
-          font-weight: 600;
-        }
-
-        td {
-          color: #2c3e50;
-        }
-
-        .remove-btn {
-          background: #e74c3c;
-          color: white;
-          border: none;
-          border-radius: 4px;
-          padding: 4px;
-          cursor: pointer;
-          font-size: 0.9em;
-          margin-right: 5px;
-        }
-
-        .save-btn {
-          background: #2ecc71;
-          color: white;
-          border: none;
-          border-radius: 4px;
-          padding: 4px;
-          cursor: pointer;
-          font-size: 0.9em;
-        }
-
-        .remove-btn:hover {
-          background: #c0392b;
-        }
-
-        .save-btn:hover {
-          background: #27ae60;
-        }
-
-        @media (max-width: 768px) {
-          .main-grid {
-            grid-template-columns: 1fr;
-          }
-          .form-grid {
-            grid-template-columns: 1fr;
-          }
-          .add-btn, .add-supplier-btn {
-            float: none;
-            width: 100%;
-            margin-top: 10px;
-          }
-        }
-      `}</style>
+      {/* Upload Modal */}
+      {isUploadModalOpen && (
+        <UploadExcelDataProvider
+          onClose={() => setIsUploadModalOpen(false)}
+          onSuccess={() => {
+            setIsUploadModalOpen(false);
+            fetchMedicines();
+          }}
+        />
+      )}
     </div>
   );
 };
 
-export default ReceiveStock;
+export default ReceivingStock;
