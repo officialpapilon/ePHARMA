@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Auth;
 use App\Models\FinancialActivity;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
@@ -78,6 +80,15 @@ class FinancialActivityController extends Controller
             'notes' => 'nullable|string',
         ]);
 
+        // Check if user is authenticated
+        $user = $request->user();
+        if (!$user) {
+            return response()->json([
+                'success' => false,
+                'message' => 'User not authenticated',
+            ], 401);
+        }
+
         $activity = FinancialActivity::create([
             'transaction_id' => FinancialActivity::generateTransactionId(),
             'type' => $request->type,
@@ -88,9 +99,9 @@ class FinancialActivityController extends Controller
             'reference_number' => $request->reference_number,
             'transaction_date' => $request->transaction_date,
             'notes' => $request->notes,
-            'created_by' => $request->user()->id,
+            'created_by' => $user->id,
             'status' => 'approved', // Auto-approve for now
-            'approved_by' => $request->user()->id,
+            'approved_by' => $user->id,
             'approved_at' => now(),
         ]);
 

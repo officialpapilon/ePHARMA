@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Http\Request;
 use App\Models\StockTaking;
 use App\Models\Medicines;
@@ -25,6 +26,7 @@ class StockTakingController extends Controller
             'products.*.batches.*.product_quantity' => 'required|integer',
             'products.*.batches.*.manufacture_date' => 'required|date',
             'products.*.batches.*.expire_date' => 'required|date',
+            'products.*.batches.*.buying_price' => 'required|numeric|min:0',
             'created_by' => 'required|string|max:255',
         ]);
 
@@ -59,9 +61,10 @@ class StockTakingController extends Controller
                             'batch_no' => $batch['batch_no'],
                             'product_name' => $medicine->product_name,
                             'product_price' => $medicine->product_price,
+                            'buying_price' => $batch['buying_price'],
                             'product_category' => $medicine->product_category,
                             'expire_date' => $batch['expire_date'],
-                            'current_quantity' => \DB::raw('IFNULL(current_quantity, 0) + ' . (int) $batch['product_quantity']),
+                            'current_quantity' => DB::raw('IFNULL(current_quantity, 0) + ' . (int) $batch['product_quantity']),
                         ]
                     );                    
                 }

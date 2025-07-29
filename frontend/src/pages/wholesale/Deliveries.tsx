@@ -11,8 +11,12 @@ import {
   TableRow,
   TablePagination,
   Button,
-  IconButton,
   TextField,
+  IconButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
   FormControl,
   InputLabel,
   Select,
@@ -20,17 +24,7 @@ import {
   Grid,
   Card,
   CardContent,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Alert,
-  Snackbar,
   Tooltip,
-  Fab,
-  CircularProgress,
-  Chip,
-  LinearProgress,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -38,8 +32,8 @@ import {
   Delete as DeleteIcon,
   Visibility as ViewIcon,
   LocalShipping as DeliveryIcon,
-  CheckCircle as DeliveredIcon,
-  Cancel as FailedIcon,
+  CheckCircle as ApproveIcon,
+  Schedule as ScheduleIcon,
   Search as SearchIcon,
   FilterList as FilterIcon,
   Refresh as RefreshIcon,
@@ -54,6 +48,7 @@ import LoadingSpinner from '../../components/common/LoadingSpinner/LoadingSpinne
 import Modal from '../../components/common/Modal/Modal';
 import StatusChip from '../../components/common/StatusChip/StatusChip';
 import { formatCurrency, formatDate, formatDateTime } from '../../utils/formatters';
+import { API_BASE_URL } from '../../../constants';
 import { wholesaleDeliveriesApi, wholesaleOrdersApi, wholesaleCustomersApi } from '../../services/wholesaleService';
 
 interface WholesaleDelivery {
@@ -127,31 +122,27 @@ const Deliveries: React.FC = () => {
   });
   const [orders, setOrders] = useState<any[]>([]);
   const [customers, setCustomers] = useState<any[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
   const { apiCall } = useApiCall();
-  const { showNotification } = useNotification();
+  const { showSuccess, showError } = useNotification();
 
   const fetchDeliveries = async () => {
     try {
       setLoading(true);
-      const params = {
-        page: page + 1,
-        per_page: rowsPerPage,
-        ...(searchTerm && { search: searchTerm }),
-        ...(statusFilter && { status: statusFilter }),
-        ...(startDate && { start_date: startDate.toISOString().split('T')[0] }),
-        ...(endDate && { end_date: endDate.toISOString().split('T')[0] }),
-      };
-
-      const response = await wholesaleDeliveriesApi.getAll(params);
+      const response = await wholesaleDeliveriesApi.getAll();
       
-      if (response.data.success) {
+      if (response.data && Array.isArray(response.data)) {
+        setDeliveries(response.data);
+      } else if (response.data && typeof response.data === 'object' && 'data' in response.data && Array.isArray(response.data.data)) {
         setDeliveries(response.data.data);
-        setTotal(response.data.meta.total);
-        setSummary(response.data.summary);
+      } else {
+        setDeliveries([]);
       }
     } catch (error) {
-      showNotification('Failed to fetch deliveries', 'error');
+      console.error('Fetch deliveries error:', error);
+      setError('Failed to fetch deliveries');
     } finally {
       setLoading(false);
     }
@@ -166,12 +157,12 @@ const Deliveries: React.FC = () => {
       const response = await wholesaleDeliveriesApi.updateDeliveryStatus(deliveryId, action);
 
       if (response.success) {
-        showNotification(`Delivery ${action}ed successfully`, 'success');
+        showSuccess(`Delivery ${action}ed successfully`, 'success');
         fetchDeliveries();
         setOpenModal(false);
       }
     } catch (error) {
-      showNotification(`Failed to ${action} delivery`, 'error');
+      showError(`Failed to ${action} delivery`, 'error');
     }
   };
 
@@ -180,13 +171,56 @@ const Deliveries: React.FC = () => {
       const response = await wholesaleDeliveriesApi.deleteDelivery(deliveryId);
 
       if (response.success) {
-        showNotification('Delivery deleted successfully', 'success');
+        showSuccess('Delivery deleted successfully', 'success');
         fetchDeliveries();
         setOpenModal(false);
       }
     } catch (error) {
-      showNotification('Failed to delete delivery', 'error');
+      showError('Failed to delete delivery', 'error');
     }
+  };
+
+  const handleApproveDelivery = async (deliveryId: number) => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const response = await fetch(`${API_BASE_URL}/api/wholesale/deliveries/${deliveryId}/approve`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify({
+          actual_delivery_date: new Date().toISOString().split('T')[0],
+          notes: 'Delivery approved and completed'
+        })
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success) {
+          showSuccess('Delivery approved successfully! Workflow completed.');
+          fetchDeliveries(); // Refresh the list
+        } else {
+          setError(result.message || 'Failed to approve delivery');
+        }
+      } else {
+        const errorData = await response.json();
+        setError(errorData.message || 'Failed to approve delivery');
+      }
+    } catch (err) {
+      console.error('Approve delivery error:', err);
+      setError('Failed to approve delivery');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const showSuccessMessage = (message: string) => {
+    setSuccess(message);
+    showSuccess(message);
   };
 
   const getStatusColor = (status: string) => {
@@ -205,11 +239,11 @@ const Deliveries: React.FC = () => {
       case 'pending':
         return <DeliveryIcon />;
       case 'in_transit':
-        return <TimelineIcon />;
+        return <ScheduleIcon />;
       case 'delivered':
-        return <DeliveredIcon />;
+        return <ApproveIcon />;
       case 'failed':
-        return <FailedIcon />;
+        return <DeliveryIcon />; // Assuming FailedIcon is not used, using DeliveryIcon as a placeholder
       default:
         return <DeliveryIcon />;
     }
@@ -264,7 +298,7 @@ const Deliveries: React.FC = () => {
       });
 
       if (response.success) {
-        showNotification('Delivery created successfully', 'success');
+        showSuccess('Delivery created successfully', 'success');
         setOpenModal(false);
         setFormData({
           order_id: '',
@@ -279,7 +313,7 @@ const Deliveries: React.FC = () => {
         fetchDeliveries();
       }
     } catch (error) {
-      showNotification('Failed to create delivery', 'error');
+      showError('Failed to create delivery', 'error');
     }
   };
 
@@ -561,7 +595,7 @@ const Deliveries: React.FC = () => {
                                 handleStatusAction(delivery.id, 'delivered');
                               }}
                             >
-                              <DeliveredIcon />
+                              <ApproveIcon />
                             </IconButton>
                           </Tooltip>
                           <Tooltip title="Mark Failed">
@@ -573,7 +607,7 @@ const Deliveries: React.FC = () => {
                                 handleStatusAction(delivery.id, 'failed');
                               }}
                             >
-                              <FailedIcon />
+                              <DeliveryIcon />
                             </IconButton>
                           </Tooltip>
                         </>

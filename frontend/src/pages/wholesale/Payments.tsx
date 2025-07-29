@@ -116,7 +116,7 @@ const Payments: React.FC = () => {
   const [showFilters, setShowFilters] = useState(false);
 
   const { apiCall } = useApiCall();
-  const { showNotification } = useNotification();
+  const { showSuccess, showError } = useNotification();
 
   const fetchPayments = async () => {
     try {
@@ -139,7 +139,7 @@ const Payments: React.FC = () => {
         setSummary(response.summary);
       }
     } catch (error) {
-      showNotification('Failed to fetch payments', 'error');
+      showError('Failed to fetch payments');
     } finally {
       setLoading(false);
     }
@@ -151,48 +151,48 @@ const Payments: React.FC = () => {
 
   const handleStatusAction = async (paymentId: number, action: string) => {
     try {
-      const response = await apiCall(`/wholesale/payments/${paymentId}/${action}`, {
+      const response = await apiCall(`api/wholesale/payments/${paymentId}/${action}`, {
         method: 'POST',
       });
 
       if (response.success) {
-        showNotification(`Payment ${action}ed successfully`, 'success');
+        showSuccess(`Payment ${action}ed successfully`);
         fetchPayments();
         setOpenModal(false);
       }
     } catch (error) {
-      showNotification(`Failed to ${action} payment`, 'error');
+      showError(`Failed to ${action} payment`);
     }
   };
 
   const handleDelete = async (paymentId: number) => {
     try {
-      const response = await apiCall(`/wholesale/payments/${paymentId}`, {
+      const response = await apiCall(`api/wholesale/payments/${paymentId}`, {
         method: 'DELETE',
       });
 
       if (response.success) {
-        showNotification('Payment deleted successfully', 'success');
+        showSuccess('Payment deleted successfully');
         fetchPayments();
         setOpenModal(false);
       }
     } catch (error) {
-      showNotification('Failed to delete payment', 'error');
+      showError('Failed to delete payment');
     }
   };
 
   const generateReceipt = async (paymentId: number) => {
     try {
-      const response = await apiCall(`/wholesale/payments/${paymentId}/receipt`, {
+      const response = await apiCall(`api/wholesale/payments/${paymentId}/receipt`, {
         method: 'POST',
       });
 
       if (response.success) {
-        showNotification('Receipt generated successfully', 'success');
+        showSuccess('Receipt generated successfully');
         // Handle receipt download or display
       }
     } catch (error) {
-      showNotification('Failed to generate receipt', 'error');
+      showError('Failed to generate receipt');
     }
   };
 
@@ -425,8 +425,8 @@ const Payments: React.FC = () => {
                     </Typography>
                   </TableCell>
                   <TableCell>
-                    <Typography variant="subtitle2">
-                      {payment.order.order_number}
+                    <Typography variant="body2">
+                      {payment.order?.order_number || 'N/A'}
                     </Typography>
                   </TableCell>
                   <TableCell>
@@ -448,14 +448,12 @@ const Payments: React.FC = () => {
                   </TableCell>
                   <TableCell>
                     <StatusChip
-                      label={payment.status}
-                      color={getStatusColor(payment.status)}
-                      icon={getStatusIcon(payment.status)}
+                      status={payment.status}
                       size="small"
                     />
                   </TableCell>
                   <TableCell>
-                    <Chip label={payment.payment_method.replace('_', ' ')} size="small" />
+                    <Chip label={(payment.payment_method || 'Unknown').replace('_', ' ')} size="small" />
                   </TableCell>
                   <TableCell align="right">
                     <Typography variant="subtitle2" fontWeight="bold">
@@ -609,17 +607,15 @@ const Payments: React.FC = () => {
                   Payment Information
                 </Typography>
                 <Typography><strong>Payment Number:</strong> {selectedPayment.payment_number}</Typography>
-                <Typography><strong>Order Number:</strong> {selectedPayment.order.order_number}</Typography>
+                <Typography><strong>Order Number:</strong> {selectedPayment.order?.order_number || 'N/A'}</Typography>
                 <Typography><strong>Payment Date:</strong> {formatDate(selectedPayment.payment_date)}</Typography>
                 <Typography><strong>Due Date:</strong> {formatDate(selectedPayment.due_date)}</Typography>
                 <Typography><strong>Amount:</strong> {formatCurrency(selectedPayment.amount)}</Typography>
-                <Typography><strong>Payment Method:</strong> {selectedPayment.payment_method.replace('_', ' ')}</Typography>
+                <Typography><strong>Payment Method:</strong> {(selectedPayment.payment_method || 'Unknown').replace('_', ' ')}</Typography>
                 <Typography><strong>Reference Number:</strong> {selectedPayment.reference_number}</Typography>
                 <Typography><strong>Status:</strong> 
                   <StatusChip
-                    label={selectedPayment.status}
-                    color={getStatusColor(selectedPayment.status)}
-                    icon={getStatusIcon(selectedPayment.status)}
+                    status={selectedPayment.status}
                     sx={{ ml: 1 }}
                   />
                 </Typography>

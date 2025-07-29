@@ -39,6 +39,7 @@ const DispensingReports = React.lazy(() => import("./pages/management/Dispensing
 const PaymentReports = React.lazy(() => import("./pages/management/PaymentReports"));
 const ManagementReports = React.lazy(() => import("./pages/management/InventoryReports"));
 const ManagementStockTakingReport = React.lazy(() => import("./pages/management/StockTakingReport"));
+const FinancialAudit = React.lazy(() => import("./pages/management/FinancialAudit"));
 const PharmacyDashboard = React.lazy(() => import("./pages/pharmacy/PharmacyDashboard"));
 const TransactionApprove = React.lazy(() => import("./pages/pharmacy/TransactionApprove"));
 const Dispensing = React.lazy(() => import("./pages/pharmacy/Dispensing"));
@@ -77,11 +78,24 @@ const StockAdjustment = React.lazy(() => import("./pages/wholesale/StockAdjustme
 const Report = React.lazy(() => import("./pages/wholesale/Report"));
 const WholesaleLayout = React.lazy(() => import("./pages/wholesale/WholesaleLayout"));
 const WholesaleDashboard = React.lazy(() => import("./pages/wholesale/WholesaleDashboard"));
+const Workflow = React.lazy(() => import("./pages/wholesale/Workflow"));
+const DeliveryManagement = React.lazy(() => import("./pages/wholesale/DeliveryManagement"));
 
 // PrivateRoute component
 const PrivateRoute: React.FC<{ element: JSX.Element }> = ({ element }) => {
   const { isAuthenticated } = useAuth();
   return isAuthenticated ? element : <Navigate to="/login" />;
+};
+
+// Root route component that checks authentication
+const RootRoute: React.FC = () => {
+  const { isAuthenticated, isInitializing } = useAuth();
+  
+  if (isInitializing) {
+    return <LoadingSpinner overlay message="Validating authentication..." />;
+  }
+  
+  return isAuthenticated ? <Navigate to="/" /> : <Navigate to="/login" />;
 };
 
 const App: React.FC = () => (
@@ -95,9 +109,9 @@ const App: React.FC = () => (
                 <Routes>
                   {/* Public Routes */}
                   <Route path="/login" element={<LoginPage />} />
-                  <Route path="/" element={<Home />} />
 
                   {/* Protected Routes */}
+                  <Route path="/" element={<PrivateRoute element={<Home />} />} />
                   <Route path="/cashier/*" element={<PrivateRoute element={<CashierLayout />} />}>
                     <Route index element={<CashierDashboard />} />
                     <Route path="payment" element={<Payment />} />
@@ -128,6 +142,8 @@ const App: React.FC = () => (
                     <Route path="stock-adjustment" element={<StockAdjustment />} />
                     <Route path="report" element={<Report />} />
                     <Route path="stock-taking" element={<WholesaleStockTaking />} />
+                    <Route path="workflow" element={<Workflow />} />
+                    <Route path="delivery-management" element={<DeliveryManagement />} />
                   </Route>
 
                   <Route path="/management/*" element={<PrivateRoute element={<ManagementLayout />} />}>
@@ -142,6 +158,7 @@ const App: React.FC = () => (
                     <Route path="dispensing-reports" element={<DispensingReports />} />
                     <Route path="payment-reports" element={<PaymentReports />} />
                     <Route path="management-reports" element={<ManagementReports />} />
+                    <Route path="financial-audit" element={<FinancialAudit />} />
                   </Route>
 
                   <Route path="/store/*" element={<PrivateRoute element={<StoreLayout />} />}>
@@ -165,6 +182,9 @@ const App: React.FC = () => (
                     <Route path="expense-categories" element={<ExpenseCategories />} />
                     <Route path="system" element={<SystemSettings />} />
                   </Route>
+
+                  {/* Catch-all route - redirect to home if authenticated, login if not */}
+                  <Route path="*" element={<RootRoute />} />
                 </Routes>
               </Suspense>
             </Router>

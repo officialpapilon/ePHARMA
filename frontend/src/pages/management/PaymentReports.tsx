@@ -123,8 +123,8 @@ const PaymentReports: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('');
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState('');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
+  const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
+  const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
   const [sortBy, setSortBy] = useState('created_at');
   const [sortOrder, setSortOrder] = useState('desc');
 
@@ -134,7 +134,7 @@ const PaymentReports: React.FC = () => {
   useEffect(() => {
     fetchPaymentData();
     fetchRevenueAnalytics();
-  }, [currentPage, sortBy, sortOrder, analyticsPeriod]);
+  }, [currentPage, sortBy, sortOrder, analyticsPeriod, startDate, endDate]);
 
   useEffect(() => {
     filterPayments();

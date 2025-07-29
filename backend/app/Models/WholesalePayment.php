@@ -16,6 +16,7 @@ class WholesalePayment extends Model
         'order_id',
         'customer_id',
         'received_by',
+        'created_by',
         'payment_type',
         'status',
         'payment_category',
@@ -57,6 +58,11 @@ class WholesalePayment extends Model
     public function receivedBy()
     {
         return $this->belongsTo(User::class, 'received_by');
+    }
+
+    public function creator()
+    {
+        return $this->belongsTo(User::class, 'created_by');
     }
 
     // Scopes

@@ -70,6 +70,46 @@ class CartsController extends Controller
 
     public function store(Request $request)
     {
+        // Check if this is a simple dispense (no patient required)
+        $isSimple = $request->query('isSimple') === 'true';
+        
+        if ($isSimple) {
+            // Simple dispense mode - no patient required
+            $validated = $request->validate([
+                'product_purchased' => 'required|array',
+                'total_price' => 'required|numeric',
+                'payment_method' => 'required|string',
+                'amount_received' => 'required|numeric',
+            ]);
+
+            // Create a passover customer ID for simple dispense
+            $passoverCustomerId = 'PASSOVER-' . date('Ymd') . '-' . str_pad(rand(1, 999), 3, '0', STR_PAD_LEFT);
+
+            $cart = Carts::create([
+                'patient_ID' => $passoverCustomerId,
+                'product_purchased' => $validated['product_purchased'],
+                'total_price' => $validated['total_price'],
+                'status' => 'completed', // Direct completion for simple dispense
+            ]);
+
+            return response()->json([
+                'message' => 'Simple dispense cart created successfully',
+                'data' => [
+                    'transaction_ID' => $cart->transaction_ID,
+                    'patient_ID' => $cart->patient_ID,
+                    'patient_name' => 'Passover Customer',
+                    'patient_phone' => 'N/A',
+                    'product_purchased' => $cart->product_purchased,
+                    'total_price' => $cart->total_price,
+                    'status' => $cart->status,
+                    'payment_method' => $validated['payment_method'],
+                    'amount_received' => $validated['amount_received'],
+                    'created_at' => $cart->created_at,
+                    'updated_at' => $cart->updated_at,
+                ]
+            ], 201);
+        } else {
+            // Regular cart mode - patient required
         $validated = $request->validate([
             'patient_ID' => 'required|string',
             'product_purchased' => 'required|array',
@@ -103,6 +143,7 @@ class CartsController extends Controller
                 'updated_at' => $cart->updated_at,
             ]
         ], 201);
+        }
     }
 
     public function show($id)

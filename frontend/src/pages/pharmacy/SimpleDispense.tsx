@@ -226,112 +226,69 @@ const SimpleDispensing: React.FC = () => {
         return;
       }
 
-      const cartPayload = {
-        product_purchased: cart.map((item) => ({
-          product_id: item.medicineId,
-          product_quantity: item.quantity,
-          product_price: item.price,
-        })),
-        payment_method: payment.method,
-        total_price: calculateTotal(),
-        amount_received: parseFloat(payment.amount) || 0,
-      };
-
-      const cartResponse = await fetch(
-        `${API_BASE_URL}/api/carts?isSimple=true`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-            Accept: "application/json",
-          },
-          body: JSON.stringify(cartPayload),
-        }
-      );
-
-      const cartData = await cartResponse.json();
-
-      if (!cartResponse.ok) {
-        throw new Error(cartData.message || "Failed to create cart");
-      }
-
-      const approvalPromises = cartData.data.product_purchased.map(
-        async (product: any) => {
-          const approvalPayload = {
-            Patient_ID: cartData.data.patient_ID,
-            Product_ID: product.product_id,
-            transaction_ID: cartData.data.transaction_ID,
-            status: "Approved",
-            approved_by: String(currentUserId),
-            approved_at: new Date().toISOString(),
-            approved_quantity: product.product_quantity,
-            approved_amount: product.product_price * product.product_quantity,
-            approved_payment_method: payment.method,
-          };
-          console.log('Approval payload:', approvalPayload);
-          const approveResponse = await fetch(
-            `${API_BASE_URL}/api/payment-approve`,
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${token}`,
-                Accept: "application/json",
-              },
-              body: JSON.stringify(approvalPayload),
-            }
-          );
-
-          if (!approveResponse.ok) {
-            const errorData = await approveResponse.json();
-            throw new Error(
-              errorData.message ||
-                `Failed to approve payment for product ${product.product_id}`
-            );
+      // For simple dispense, we'll directly update medicines cache and create dispensed records
+      const dispensePromises = cart.map(async (item) => {
+        // Update medicines cache to reduce stock
+        const updateResponse = await fetch(
+          `${API_BASE_URL}/api/medicines-cache/${item.medicineId}`,
+          {
+            method: "PUT",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+              Accept: "application/json",
+            },
+            body: JSON.stringify({
+              current_quantity: item.stock - item.quantity,
+            }),
           }
+        );
 
-          const dispensePayload = {
-            quantity: product.product_quantity,
-            Payment_ID: cartData.data.transaction_ID.toString(),
-            Patient_ID: cartData.data.patient_ID,
-            created_by: String(currentUserId),
-            transaction_id: String(cartData.data.transaction_ID),
-            transaction_status: "completed",
-            total_price: product.product_price * product.product_quantity,
-            payment_method: payment.method,
-            approved_payment_method: payment.method,
-          };
-
-          const dispenseResponse = await fetch(
-            `${API_BASE_URL}/api/dispense/${product.product_id}`,
-            {
-              method: "PUT",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${token}`,
-                Accept: "application/json",
-              },
-              body: JSON.stringify(dispensePayload),
-            }
+        if (!updateResponse.ok) {
+          const errorData = await updateResponse.json();
+          throw new Error(
+            errorData.message || `Failed to update stock for product ${item.medicineId}`
           );
-
-          if (!dispenseResponse.ok) {
-            const errorData = await dispenseResponse.json();
-            throw new Error(
-              errorData.message ||
-                `Failed to dispense product ${product.product_id}`
-            );
-          }
-
-          return {
-            approval: await approveResponse.json(),
-            dispense: await dispenseResponse.json(),
-          };
         }
-      );
 
-      await Promise.all(approvalPromises);
+        // Create dispensed record
+        const dispensePayload = {
+          transaction_id: `SIMPLE-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          transaction_status: "completed",
+          customer_id: "PASSOVER-CUSTOMER",
+          product_purchased: [item.medicineId],
+          product_quantity: [item.quantity],
+          total_price: item.price * item.quantity,
+          created_by: String(currentUserId),
+        };
+
+        const dispenseResponse = await fetch(
+          `${API_BASE_URL}/api/dispensed`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+              Accept: "application/json",
+            },
+            body: JSON.stringify(dispensePayload),
+          }
+        );
+
+        if (!dispenseResponse.ok) {
+          const errorData = await dispenseResponse.json();
+          throw new Error(
+            errorData.message || `Failed to create dispensed record for product ${item.medicineId}`
+          );
+        }
+
+        return {
+          update: await updateResponse.json(),
+          dispense: await dispenseResponse.json(),
+        };
+      });
+
+      await Promise.all(dispensePromises);
 
       setCart([]);
       setShowPaymentModal(false);
@@ -450,6 +407,7 @@ const SimpleDispensing: React.FC = () => {
     entered: { opacity: 1, transform: "translateX(0)" },
     exiting: { opacity: 0, transform: "translateX(100%)" },
     exited: { opacity: 0, transform: "translateX(100%)" },
+    unmounted: { opacity: 0, transform: "translateX(100%)" },
   };
 
   const theme = useTheme();
@@ -695,7 +653,7 @@ const SimpleDispensing: React.FC = () => {
 
       {showScanner && (
         <BarcodeScanner
-          onScan={(barcode) => {
+          onScan={(barcode: string) => {
             setMedicineSearchTerm(barcode);
             const matches = medicines.filter(
               (m) =>

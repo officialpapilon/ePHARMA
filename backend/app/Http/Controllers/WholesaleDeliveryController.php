@@ -6,8 +6,10 @@ use App\Models\WholesaleDelivery;
 use App\Models\WholesaleOrder;
 use App\Models\WholesaleCustomer;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Validator;
 use Carbon\Carbon;
 
 class WholesaleDeliveryController extends Controller
@@ -351,5 +353,389 @@ class WholesaleDeliveryController extends Controller
             'data' => $methods,
             'message' => 'Delivery methods retrieved successfully'
         ]);
+    }
+
+    public function createFromOrder(Request $request, $orderId)
+    {
+        $validated = $request->validate([
+            'delivery_date' => 'required|date|after_or_equal:today',
+            'delivery_address' => 'required|string',
+            'contact_person' => 'required|string',
+            'contact_phone' => 'required|string',
+            'delivery_fee' => 'nullable|numeric|min:0',
+            'notes' => 'nullable|string',
+        ]);
+
+        try {
+            DB::beginTransaction();
+
+            $order = WholesaleOrder::with(['customer', 'items'])->findOrFail($orderId);
+            
+            // Check if order is ready for delivery
+            if ($order->payment_status !== 'paid') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Order must be fully paid before creating delivery'
+                ], 400);
+            }
+
+            if ($order->status !== 'confirmed' && $order->status !== 'processing') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Order must be confirmed or processing before creating delivery'
+                ], 400);
+            }
+
+            // Check if delivery already exists
+            $existingDelivery = WholesaleDelivery::where('order_id', $orderId)->first();
+            if ($existingDelivery) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Delivery already exists for this order'
+                ], 400);
+            }
+
+            // Create delivery
+            $delivery = WholesaleDelivery::create([
+                'delivery_number' => 'DEL-' . date('Y') . '-' . str_pad(rand(1, 9999), 4, '0', STR_PAD_LEFT),
+                'order_id' => $orderId,
+                'customer_id' => $order->customer_id,
+                'scheduled_date' => $validated['delivery_date'],
+                'status' => 'scheduled',
+                'delivery_address' => $validated['delivery_address'],
+                'contact_person' => $validated['contact_person'],
+                'contact_phone' => $validated['contact_phone'],
+                'delivery_fee' => $validated['delivery_fee'] ?? 0,
+                'notes' => $validated['notes'],
+            ]);
+
+            // Update order status
+            $order->update([
+                'status' => 'ready_for_delivery',
+                'is_delivery_scheduled' => true,
+            ]);
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Delivery created successfully',
+                'data' => [
+                    'delivery' => $delivery->load(['order', 'customer']),
+                    'order' => $order->load(['customer', 'items']),
+                    'next_step' => 'approve_delivery'
+                ]
+            ], 201);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to create delivery: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function approveDelivery(Request $request, $deliveryId)
+    {
+        $validated = $request->validate([
+            'actual_delivery_date' => 'nullable|date',
+            'notes' => 'nullable|string',
+        ]);
+
+        try {
+            DB::beginTransaction();
+
+            $delivery = WholesaleDelivery::with(['order', 'order.items'])->findOrFail($deliveryId);
+            
+            if ($delivery->status !== 'scheduled' && $delivery->status !== 'in_transit') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Delivery is not in a state that can be approved'
+                ], 400);
+            }
+
+            // Update delivery status
+            $delivery->update([
+                'status' => 'delivered',
+                'actual_delivery_date' => $validated['actual_delivery_date'] ?? now(),
+                'delivered_by' => Auth::id() ?? 1,
+                'notes' => $validated['notes'] ?? $delivery->notes,
+            ]);
+
+            // Update order status
+            $order = $delivery->order;
+            $order->update([
+                'status' => 'completed',
+                'actual_delivery_date' => $delivery->actual_delivery_date,
+                'is_delivered' => true,
+            ]);
+
+            // Update delivered quantities in order items
+            foreach ($order->items as $item) {
+                $item->update([
+                    'quantity_delivered' => $item->quantity_ordered,
+                ]);
+            }
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Delivery approved successfully',
+                'data' => [
+                    'delivery' => $delivery->load(['order', 'customer']),
+                    'order' => $order->load(['customer', 'items']),
+                    'workflow_completed' => true
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to approve delivery: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Handle order fulfillment - capture delivery details and create delivery record
+     */
+    public function fulfillOrder(Request $request, $orderId)
+    {
+        try {
+            $validated = $request->validate([
+                'delivery_address' => 'required|string|max:500',
+                'contact_person' => 'required|string|max:100',
+                'contact_phone' => 'required|string|max:20',
+                'delivery_fee' => 'required|numeric|min:0',
+                'expected_delivery_date' => 'required|date|after:today',
+                'delivery_instructions' => 'nullable|string|max:500',
+                'notes' => 'nullable|string|max:500',
+            ]);
+
+            DB::beginTransaction();
+
+            $order = WholesaleOrder::findOrFail($orderId);
+            
+            if ($order->status !== 'confirmed' || $order->payment_status !== 'paid') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Order must be confirmed and paid before fulfillment'
+                ], 400);
+            }
+
+            // Update order with delivery details
+            $order->update([
+                'status' => 'ready_for_delivery',
+                'delivery_address' => $validated['delivery_address'],
+                'delivery_contact_person' => $validated['contact_person'],
+                'delivery_contact_phone' => $validated['contact_phone'],
+                'delivery_instructions' => $validated['delivery_instructions'] ?? '',
+            ]);
+
+            // Create delivery record
+            $delivery = WholesaleDelivery::create([
+                'delivery_number' => 'DEL-' . date('Y') . '-' . str_pad(rand(1, 9999), 4, '0', STR_PAD_LEFT),
+                'order_id' => $orderId,
+                'customer_id' => $order->customer_id,
+                'created_by' => Auth::id() ?? 1,
+                'delivery_date' => $validated['expected_delivery_date'],
+                'actual_delivery_date' => null,
+                'status' => 'scheduled',
+                'delivery_address' => $validated['delivery_address'],
+                'contact_person' => $validated['contact_person'],
+                'contact_phone' => $validated['contact_phone'],
+                'delivery_fee' => $validated['delivery_fee'],
+                'notes' => $validated['notes'] ?? 'Delivery scheduled from order fulfillment',
+                'delivered_by' => null,
+            ]);
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Order fulfilled successfully and delivery scheduled',
+                'data' => [
+                    'order' => $order->load(['customer', 'items']),
+                    'delivery' => $delivery,
+                    'next_step' => 'delivery_management',
+                    'workflow_status' => 'ready_for_delivery'
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Order fulfillment error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to fulfill order: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Assign delivery person to order
+     */
+    public function assignDelivery(Request $request, $orderId)
+    {
+        try {
+            $validated = $request->validate([
+                'delivery_person_id' => 'required|exists:users,id',
+                'notes' => 'nullable|string|max:500',
+            ]);
+
+            $order = WholesaleOrder::findOrFail($orderId);
+            
+            if ($order->status !== 'ready_for_delivery') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Order is not ready for delivery assignment'
+                ], 400);
+            }
+
+            $order->update([
+                'assigned_delivery_person_id' => $validated['delivery_person_id'],
+                'status' => 'assigned_to_delivery',
+                'notes' => $order->notes . ' | ' . ($validated['notes'] ?? 'Delivery assigned'),
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Delivery person assigned successfully',
+                'data' => [
+                    'order' => $order->load(['customer', 'items', 'deliveryPerson']),
+                    'next_step' => 'delivery_execution',
+                    'workflow_status' => 'delivery_assigned'
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error('Delivery assignment error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to assign delivery: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Update delivery status by delivery person
+     */
+    public function updateDeliveryStatus(Request $request, $orderId)
+    {
+        try {
+            $validated = $request->validate([
+                'status' => 'required|in:out_for_delivery,picked_by_customer,delivered',
+                'notes' => 'nullable|string|max:500',
+                'actual_delivery_date' => 'nullable|date',
+            ]);
+
+            $order = WholesaleOrder::findOrFail($orderId);
+            
+            if (!in_array($order->status, ['assigned_to_delivery', 'out_for_delivery'])) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Order is not in correct status for delivery update'
+                ], 400);
+            }
+
+            $order->update([
+                'status' => $validated['status'],
+                'actual_delivery_date' => $validated['actual_delivery_date'] ?? now(),
+                'notes' => $order->notes . ' | ' . ($validated['notes'] ?? 'Delivery status updated'),
+            ]);
+
+            // Generate delivery note if delivered
+            if ($validated['status'] === 'delivered' || $validated['status'] === 'picked_by_customer') {
+                $order->generateDeliveryNoteNumber();
+                $order->update([
+                    'is_delivered' => true,
+                    'status' => 'completed'
+                ]);
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Delivery status updated successfully',
+                'data' => [
+                    'order' => $order->load(['customer', 'items', 'deliveryPerson']),
+                    'delivery_note_number' => $order->delivery_note_number,
+                    'next_step' => $validated['status'] === 'delivered' ? 'completed' : 'delivery_tracking',
+                    'workflow_status' => 'delivery_updated'
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error('Delivery status update error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to update delivery status: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Cancel order and release inventory
+     */
+    public function cancelOrder(Request $request, $orderId)
+    {
+        try {
+            $validated = $request->validate([
+                'reason' => 'required|string|max:500',
+            ]);
+
+            $order = WholesaleOrder::findOrFail($orderId);
+            
+            if (in_array($order->status, ['delivered', 'completed'])) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Cannot cancel completed order'
+                ], 400);
+            }
+
+            DB::beginTransaction();
+
+            // Release inventory if reserved
+            $order->releaseInventory();
+
+            // Update order status
+            $order->update([
+                'status' => 'cancelled',
+                'notes' => $order->notes . ' | Cancelled: ' . $validated['reason'],
+            ]);
+
+            // Cancel associated payment
+            $payment = WholesalePayment::where('order_id', $orderId)
+                ->where('status', 'pending')
+                ->first();
+            
+            if ($payment) {
+                $payment->update([
+                    'status' => 'cancelled',
+                    'notes' => 'Payment cancelled due to order cancellation',
+                ]);
+            }
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Order cancelled successfully and inventory released',
+                'data' => [
+                    'order' => $order->load(['customer', 'items']),
+                    'workflow_status' => 'order_cancelled'
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            \Log::error('Order cancellation error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to cancel order: ' . $e->getMessage()
+            ], 500);
+        }
     }
 }

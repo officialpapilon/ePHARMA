@@ -241,6 +241,7 @@ const FinancialActivities: React.FC = () => {
   const handleSubmit = async () => {
     try {
       const token = localStorage.getItem('token');
+      
       const url = editingActivity 
         ? `${API_BASE_URL}/api/financial-activities/${editingActivity.id}`
         : `${API_BASE_URL}/api/financial-activities`;
@@ -258,6 +259,7 @@ const FinancialActivities: React.FC = () => {
       });
       
       const data = await response.json();
+      
       if (data.success) {
         showSuccess(editingActivity ? 'Activity updated successfully' : 'Activity created successfully');
         setShowModal(false);
@@ -267,7 +269,7 @@ const FinancialActivities: React.FC = () => {
       } else {
         showError(data.message || 'Operation failed');
       }
-    } catch {
+    } catch (error) {
       showError('Operation failed');
     }
   };

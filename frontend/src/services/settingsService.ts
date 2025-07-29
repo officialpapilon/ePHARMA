@@ -1,8 +1,7 @@
-// src/services/settingsService.ts
-import { PharmacySetting, PaymentMethod, Reason, ExpenseCategory, User, SystemSetting } from '../types/settings';
-import { API_BASE_URL } from '../constants';
+import { PharmacySettings, PaymentMethod, Reason, ExpenseCategory, User, SystemSetting } from '../types/settings';
+import { API_BASE_URL } from '../../constants';
 
-export const fetchPharmacySettings = async (): Promise<PharmacySetting[]> => {
+export const fetchPharmacySettings = async (): Promise<PharmacySettings[]> => {
   const response = await fetch(`${API_BASE_URL}/api/settings/pharmacy`);
   if (!response.ok) throw new Error('Failed to fetch pharmacy settings');
   return response.json();

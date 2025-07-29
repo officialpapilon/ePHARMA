@@ -5,9 +5,6 @@ use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\File;
 
-// ============================================================================
-// CONTROLLER IMPORTS
-// ============================================================================
 use App\Http\Controllers\PatientsController;
 use App\Http\Controllers\MedicinesController;
 use App\Http\Controllers\CartsController;
@@ -35,29 +32,17 @@ use App\Http\Controllers\InventoryReportsController;
 use App\Http\Controllers\PaymentReportsController;
 use App\Http\Controllers\DispensingReportsController;
 use App\Http\Controllers\StockReceivingController;
+use App\Http\Controllers\FinancialAuditController;
 use App\Models\Branch;
 
-// ============================================================================
-// PUBLIC ROUTES (No Authentication Required)
-// ============================================================================
 
-/**
- * Authentication Routes
- */
+
 Route::post('/login', [LoginController::class, 'login'])->middleware('guest:sanctum');
 
-// ============================================================================
-// PROTECTED ROUTES (Authentication Required)
-// ============================================================================
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware('auth')->group(function () {
     
-    // ========================================================================
-    // AUTHENTICATION & USER MANAGEMENT
-    // ========================================================================
+
     
-    /**
-     * User Profile & Authentication
-     */
     Route::get('/user', [LoginController::class, 'me']);
     Route::post('/logout', function (Request $request) {
         $request->user()->currentAccessToken()->delete();
@@ -77,24 +62,13 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/change-password', [UsersController::class, 'changePassword']);
     });
     
-    /**
-     * User Password Management
-     */
     Route::post('/user/change-password', [\App\Http\Controllers\UserController::class, 'changePassword']);
     
-    /**
-     * User Subscriptions
-     */
+   
     Route::post('/users/{user}/subscribe', [SubscriptionController::class, 'subscribe']);
     Route::get('/users/{user}/subscription', [SubscriptionController::class, 'checkSubscription']);
     
-    // ========================================================================
-    // PHARMACY & BRANCH MANAGEMENT
-    // ========================================================================
-    
-    /**
-     * Pharmacy Management
-     */
+   
     Route::prefix('pharmacies')->group(function () {
         Route::get('/', [PharmacyController::class, 'index']);
         Route::post('/', [PharmacyController::class, 'store'])
@@ -112,9 +86,7 @@ Route::middleware('auth:sanctum')->group(function () {
             ->middleware('can:create,'.Branch::class);
     });
     
-    /**
-     * Branch Management
-     */
+    //Branch Management
     Route::prefix('branches')->group(function () {
         Route::get('/{branch}', [BranchController::class, 'show'])
             ->middleware('can:view,branch');
@@ -128,18 +100,13 @@ Route::middleware('auth:sanctum')->group(function () {
             ->middleware('can:deactivate,branch');
     });
     
-    // ========================================================================
-    // CORE BUSINESS LOGIC - CUSTOMERS & PATIENTS
-    // ========================================================================
+ 
+   //Customer/Patient Management
     
-    /**
-     * Customer/Patient Management
-     */
     Route::apiResource('customers', PatientsController::class);
     
-    /**
-     * Customer Transactions & Reports
-     */
+    //Customer Transactions & Reports
+    
     Route::prefix('customers')->group(function () {
         Route::get('/{customerId}/transactions', [CustomerTransactionController::class, 'getCustomerTransactions']);
         Route::get('/{customerId}/transaction-summary', [CustomerTransactionController::class, 'getCustomerTransactionSummary']);
@@ -205,7 +172,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/payment-methods', [DispensingReportController::class, 'paymentMethods']);
 
     // MANAGEMENT DASHBOARD & REPORTS
-    Route::get('/management-dashboard', [App\Http\Controllers\ManagementDashboardController::class, 'index']);
+    // Route::get('/management-dashboard', [App\Http\Controllers\ManagementDashboardController::class, 'index']);
 
     // INVENTORY REPORTS
     Route::get('/inventory-reports', [App\Http\Controllers\InventoryReportsController::class, 'index']);
@@ -289,12 +256,12 @@ Route::middleware('auth:sanctum')->group(function () {
 });
 
 // Store Dashboard routes
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware('auth')->group(function () {
     Route::get('/store-dashboard', [App\Http\Controllers\StoreDashboardController::class, 'index']);
 });
 
 // Stock Adjustment routes
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware('auth')->group(function () {
     Route::get('/stock-adjustments', [App\Http\Controllers\StockAdjustmentController::class, 'index']);
     Route::post('/stock-adjustments', [App\Http\Controllers\StockAdjustmentController::class, 'store']);
     Route::get('/stock-adjustments/{id}', [App\Http\Controllers\StockAdjustmentController::class, 'show']);
@@ -320,6 +287,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::get('/payment-reports/customer-insights', [App\Http\Controllers\PaymentReportsController::class, 'customerInsights']);
     Route::get('/dispensing-reports/trends', [App\Http\Controllers\DispensingReportsController::class, 'trends']);
     Route::get('/dispensing-reports/activities', [App\Http\Controllers\DispensingReportsController::class, 'activities']);
+    Route::get('/financial-audit', [FinancialAuditController::class, 'index']);
 });
 
 // Dispensing Reports Routes
@@ -333,47 +301,60 @@ Route::middleware(['auth:sanctum'])->group(function () {
 // WHOLESALE ROUTES
 // ============================================================================
 
-Route::middleware(['auth:sanctum'])->group(function () {
-    // Wholesale Customers
-    Route::apiResource('wholesale/customers', App\Http\Controllers\WholesaleCustomerController::class);
-    Route::get('/wholesale/customers/types', [App\Http\Controllers\WholesaleCustomerController::class, 'getCustomerTypes']);
-    Route::get('/wholesale/customers/payment-terms', [App\Http\Controllers\WholesaleCustomerController::class, 'getPaymentTerms']);
-    Route::post('/wholesale/customers/{id}/balance', [App\Http\Controllers\WholesaleCustomerController::class, 'updateBalance']);
-
-    // Wholesale Orders
-    Route::apiResource('wholesale/orders', App\Http\Controllers\WholesaleOrderController::class);
-    Route::post('/wholesale/orders/{id}/confirm', [App\Http\Controllers\WholesaleOrderController::class, 'confirm']);
-    Route::post('/wholesale/orders/{id}/cancel', [App\Http\Controllers\WholesaleOrderController::class, 'cancel']);
-    Route::post('/wholesale/orders/{id}/process', [App\Http\Controllers\WholesaleOrderController::class, 'process']);
-    Route::post('/wholesale/orders/{id}/ready-for-delivery', [App\Http\Controllers\WholesaleOrderController::class, 'readyForDelivery']);
-    Route::post('/wholesale/orders/{id}/complete', [App\Http\Controllers\WholesaleOrderController::class, 'complete']);
-
-    // Wholesale Deliveries
-    Route::apiResource('wholesale/deliveries', App\Http\Controllers\WholesaleDeliveryController::class);
-    Route::post('/wholesale/deliveries/{id}/in-transit', [App\Http\Controllers\WholesaleDeliveryController::class, 'markInTransit']);
-    Route::post('/wholesale/deliveries/{id}/delivered', [App\Http\Controllers\WholesaleDeliveryController::class, 'markDelivered']);
-    Route::post('/wholesale/deliveries/{id}/failed', [App\Http\Controllers\WholesaleDeliveryController::class, 'markFailed']);
-    Route::get('/wholesale/deliveries/methods', [App\Http\Controllers\WholesaleDeliveryController::class, 'getDeliveryMethods']);
-
-    // Wholesale Payments
-    Route::apiResource('wholesale/payments', App\Http\Controllers\WholesalePaymentController::class);
-    Route::post('/wholesale/payments/{id}/complete', [App\Http\Controllers\WholesalePaymentController::class, 'markCompleted']);
-    Route::post('/wholesale/payments/{id}/fail', [App\Http\Controllers\WholesalePaymentController::class, 'markFailed']);
-    Route::post('/wholesale/payments/{id}/refund', [App\Http\Controllers\WholesalePaymentController::class, 'markRefunded']);
-    Route::post('/wholesale/payments/{id}/receipt', [App\Http\Controllers\WholesalePaymentController::class, 'generateReceipt']);
-    Route::get('/wholesale/payments/methods', [App\Http\Controllers\WholesalePaymentController::class, 'getPaymentMethods']);
-
-    // Wholesale Reports
-    Route::get('/wholesale/reports/sales', [App\Http\Controllers\WholesaleReportController::class, 'sales']);
-    Route::get('/wholesale/reports/customers', [App\Http\Controllers\WholesaleReportController::class, 'customers']);
-    Route::get('/wholesale/reports/deliveries', [App\Http\Controllers\WholesaleReportController::class, 'deliveries']);
-    Route::get('/wholesale/reports/payments', [App\Http\Controllers\WholesaleReportController::class, 'payments']);
-    Route::get('/wholesale/reports/overdue', [App\Http\Controllers\WholesaleReportController::class, 'overdue']);
-    Route::get('/wholesale/reports/dashboard', [App\Http\Controllers\WholesaleReportController::class, 'dashboard']);
-
-    // Wholesale Products (for POS)
-    Route::get('/wholesale/products', [App\Http\Controllers\WholesaleOrderController::class, 'getProducts']);
-    Route::get('/wholesale/products/search', [App\Http\Controllers\WholesaleOrderController::class, 'searchProducts']);
+Route::prefix('wholesale')->group(function () {
+    // POS Routes
+    Route::post('/pos/process-payment', [App\Http\Controllers\WholesaleOrderController::class, 'store']);
+    
+    // Product Routes
+    Route::get('/products', [App\Http\Controllers\WholesaleProductController::class, 'index']);
+    Route::get('/products/categories', [App\Http\Controllers\WholesaleProductController::class, 'categories']);
+    Route::get('/products/search', [App\Http\Controllers\WholesaleOrderController::class, 'searchProducts']);
+    
+    // Order Routes
+    Route::get('/orders', [App\Http\Controllers\WholesaleOrderController::class, 'index']);
+    Route::post('/orders', [App\Http\Controllers\WholesaleOrderController::class, 'store']);
+    Route::get('/orders/{id}', [App\Http\Controllers\WholesaleOrderController::class, 'show']);
+    Route::put('/orders/{id}', [App\Http\Controllers\WholesaleOrderController::class, 'update']);
+    Route::delete('/orders/{id}', [App\Http\Controllers\WholesaleOrderController::class, 'destroy']);
+    Route::post('/orders/{id}/cancel', [App\Http\Controllers\WholesaleDeliveryController::class, 'cancelOrder']);
+    
+    // Payment Routes
+    Route::get('/payments', [App\Http\Controllers\WholesalePaymentController::class, 'index']);
+    Route::post('/payments', [App\Http\Controllers\WholesalePaymentController::class, 'store']);
+    Route::post('/orders/{orderId}/process-payment', [App\Http\Controllers\WholesalePaymentController::class, 'processPayment']);
+    Route::get('/payments/{id}', [App\Http\Controllers\WholesalePaymentController::class, 'show']);
+    Route::put('/payments/{id}', [App\Http\Controllers\WholesalePaymentController::class, 'update']);
+    Route::delete('/payments/{id}', [App\Http\Controllers\WholesalePaymentController::class, 'destroy']);
+    Route::post('/payments/{id}/receipt', [App\Http\Controllers\WholesalePaymentController::class, 'generateReceipt']);
+    Route::post('/payments/{id}/complete', [App\Http\Controllers\WholesalePaymentController::class, 'markCompleted']);
+    Route::post('/payments/{id}/fail', [App\Http\Controllers\WholesalePaymentController::class, 'markFailed']);
+    Route::post('/payments/{id}/refund', [App\Http\Controllers\WholesalePaymentController::class, 'markRefunded']);
+    
+    // Delivery Routes
+    Route::get('/deliveries', [App\Http\Controllers\WholesaleDeliveryController::class, 'index']);
+    Route::post('/deliveries', [App\Http\Controllers\WholesaleDeliveryController::class, 'store']);
+    Route::post('/orders/{orderId}/fulfill', [App\Http\Controllers\WholesaleDeliveryController::class, 'fulfillOrder']);
+    Route::post('/orders/{orderId}/assign-delivery', [App\Http\Controllers\WholesaleDeliveryController::class, 'assignDelivery']);
+    Route::post('/orders/{orderId}/update-delivery-status', [App\Http\Controllers\WholesaleDeliveryController::class, 'updateDeliveryStatus']);
+    Route::post('/orders/{orderId}/create-delivery', [App\Http\Controllers\WholesaleDeliveryController::class, 'createFromOrder']);
+    Route::post('/deliveries/{deliveryId}/approve', [App\Http\Controllers\WholesaleDeliveryController::class, 'approveDelivery']);
+    Route::get('/deliveries/{id}', [App\Http\Controllers\WholesaleDeliveryController::class, 'show']);
+    Route::put('/deliveries/{id}', [App\Http\Controllers\WholesaleDeliveryController::class, 'update']);
+    Route::delete('/deliveries/{id}', [App\Http\Controllers\WholesaleDeliveryController::class, 'destroy']);
+    
+    // Customer Routes
+    Route::get('/customers', [App\Http\Controllers\WholesaleCustomerController::class, 'index']);
+    Route::post('/customers', [App\Http\Controllers\WholesaleCustomerController::class, 'store']);
+    Route::get('/customers/{id}', [App\Http\Controllers\WholesaleCustomerController::class, 'show']);
+    Route::put('/customers/{id}', [App\Http\Controllers\WholesaleCustomerController::class, 'update']);
+    Route::delete('/customers/{id}', [App\Http\Controllers\WholesaleCustomerController::class, 'destroy']);
+    
+    // Report Routes
+    Route::get('/reports/dashboard', [App\Http\Controllers\WholesaleReportController::class, 'dashboard']);
+    Route::get('/reports/orders', [App\Http\Controllers\WholesaleReportController::class, 'orders']);
+    Route::get('/reports/payments', [App\Http\Controllers\WholesaleReportController::class, 'payments']);
+    Route::get('/reports/deliveries', [App\Http\Controllers\WholesaleReportController::class, 'deliveries']);
+    Route::get('/reports/top-products', [App\Http\Controllers\WholesaleReportController::class, 'topProducts']);
 });
 
 // ============================================================================

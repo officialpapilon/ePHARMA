@@ -33,4 +33,9 @@ class Patients extends Model
     protected $hidden = [];
 
     protected $casts = [];
+
+    public function paymentApprovals()
+    {
+        return $this->hasMany(PaymentApproval::class, 'Patient_ID', 'id');
+    }
 }

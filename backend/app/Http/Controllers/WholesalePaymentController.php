@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Auth;
 
 class WholesalePaymentController extends Controller
 {
@@ -253,158 +254,136 @@ class WholesalePaymentController extends Controller
         }
     }
 
-    public function markCompleted($id)
+    /**
+     * Mark payment as completed
+     */
+    public function markCompleted(Request $request, $id)
     {
         try {
             $payment = WholesalePayment::findOrFail($id);
             
-            if ($payment->status !== 'pending') {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Only pending payments can be marked as completed'
-                ], 400);
-            }
-
-            DB::transaction(function () use ($payment) {
                 $payment->update([
                     'status' => 'completed',
-                    'updated_at' => now(),
+                'amount_received' => $payment->amount,
                 ]);
 
-                // Update order balance
+            // Update order payment status
+            if ($payment->order) {
                 $order = $payment->order;
+                $totalPaid = $order->payments()->where('status', 'completed')->sum('amount');
+                $balance = $order->total_amount - $totalPaid;
+                
                 $order->update([
-                    'paid_amount' => $order->paid_amount + $payment->amount,
-                    'balance_amount' => $order->balance_amount - $payment->amount,
+                    'paid_amount' => $totalPaid,
+                    'balance_amount' => $balance,
+                    'payment_status' => $balance <= 0 ? 'paid' : 'partial',
                 ]);
-
-                // Update payment status if balance is zero
-                if ($order->balance_amount <= 0) {
-                    $order->update(['payment_status' => 'paid']);
-                } else {
-                    $order->update(['payment_status' => 'partial']);
                 }
-            });
 
             return response()->json([
                 'success' => true,
-                'data' => $payment->load(['order', 'customer']),
-                'message' => 'Payment marked as completed'
+                'message' => 'Payment marked as completed',
+                'data' => $payment->load(['order', 'customer'])
             ]);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to update payment status',
-                'error' => $e->getMessage()
+                'message' => 'Failed to mark payment as completed: ' . $e->getMessage()
             ], 500);
         }
     }
 
-    public function markFailed($id)
+    /**
+     * Mark payment as failed
+     */
+    public function markFailed(Request $request, $id)
     {
         try {
             $payment = WholesalePayment::findOrFail($id);
-            
-            if ($payment->status !== 'pending') {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Only pending payments can be marked as failed'
-                ], 400);
-            }
 
             $payment->update([
                 'status' => 'failed',
-                'updated_at' => now(),
             ]);
 
             return response()->json([
                 'success' => true,
-                'data' => $payment->load(['order', 'customer']),
-                'message' => 'Payment marked as failed'
+                'message' => 'Payment marked as failed',
+                'data' => $payment->load(['order', 'customer'])
             ]);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to update payment status',
-                'error' => $e->getMessage()
+                'message' => 'Failed to mark payment as failed: ' . $e->getMessage()
             ], 500);
         }
     }
 
-    public function markRefunded($id)
+    /**
+     * Mark payment as refunded
+     */
+    public function markRefunded(Request $request, $id)
     {
         try {
             $payment = WholesalePayment::findOrFail($id);
             
-            if ($payment->status !== 'completed') {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Only completed payments can be marked as refunded'
-                ], 400);
-            }
-
-            DB::transaction(function () use ($payment) {
                 $payment->update([
                     'status' => 'refunded',
-                    'updated_at' => now(),
                 ]);
 
-                // Update order balance
+            // Update order payment status
+            if ($payment->order) {
                 $order = $payment->order;
+                $totalPaid = $order->payments()->where('status', 'completed')->sum('amount');
+                $balance = $order->total_amount - $totalPaid;
+                
                 $order->update([
-                    'paid_amount' => $order->paid_amount - $payment->amount,
-                    'balance_amount' => $order->balance_amount + $payment->amount,
-                    'payment_status' => 'partial',
+                    'paid_amount' => $totalPaid,
+                    'balance_amount' => $balance,
+                    'payment_status' => $balance <= 0 ? 'paid' : 'partial',
                 ]);
-            });
+            }
 
             return response()->json([
                 'success' => true,
-                'data' => $payment->load(['order', 'customer']),
-                'message' => 'Payment marked as refunded'
+                'message' => 'Payment marked as refunded',
+                'data' => $payment->load(['order', 'customer'])
             ]);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to update payment status',
-                'error' => $e->getMessage()
+                'message' => 'Failed to mark payment as refunded: ' . $e->getMessage()
             ], 500);
         }
     }
 
-    public function generateReceipt($id)
+    /**
+     * Generate receipt for a payment
+     */
+    public function generateReceipt(Request $request, $id)
     {
         try {
-            $payment = WholesalePayment::with(['order', 'customer', 'order.customer'])
-                ->findOrFail($id);
+            $payment = WholesalePayment::findOrFail($id);
 
-            // Generate receipt data
-            $receipt = [
-                'receipt_number' => 'RCP' . str_pad($payment->id, 6, '0', STR_PAD_LEFT),
-                'payment' => $payment,
-                'generated_at' => now(),
-                'company_info' => [
-                    'name' => 'Your Pharmacy Name',
-                    'address' => 'Your Pharmacy Address',
-                    'phone' => 'Your Pharmacy Phone',
-                    'email' => 'Your Pharmacy Email',
-                ],
-            ];
+            // Generate receipt number
+            $receiptNumber = 'RCP-' . date('Y') . '-' . str_pad(rand(1, 9999), 4, '0', STR_PAD_LEFT);
+            
+            $payment->update([
+                'receipt_number' => $receiptNumber,
+                'is_receipt_generated' => true,
+            ]);
 
             return response()->json([
                 'success' => true,
-                'data' => $receipt,
-                'message' => 'Receipt generated successfully'
+                'message' => 'Receipt generated successfully',
+                'data' => [
+                    'receipt_number' => $receiptNumber,
+                    'payment' => $payment->load(['order', 'customer'])
+                ]
             ]);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to generate receipt',
-                'error' => $e->getMessage()
+                'message' => 'Failed to generate receipt: ' . $e->getMessage()
             ], 500);
         }
     }
@@ -425,5 +404,85 @@ class WholesalePaymentController extends Controller
             'data' => $methods,
             'message' => 'Payment methods retrieved successfully'
         ]);
+    }
+
+    /**
+     * Process manual payment for an existing order
+     */
+    public function processPayment(Request $request, $orderId)
+    {
+        try {
+            $validated = $request->validate([
+                'payment_method' => 'required|in:cash,mobile_money,card',
+                'amount' => 'required|numeric|min:0',
+                'reference_number' => 'required|string|max:100',
+                'notes' => 'nullable|string|max:500',
+            ]);
+
+            DB::beginTransaction();
+
+            $order = WholesaleOrder::findOrFail($orderId);
+            
+            if ($order->status !== 'pending_payment') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Order is not in payment pending status'
+                ], 400);
+            }
+
+            // Find the pending payment for this order
+            $payment = WholesalePayment::where('order_id', $orderId)
+                ->where('status', 'pending')
+                ->first();
+
+            if (!$payment) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No pending payment found for this order'
+                ], 400);
+            }
+
+            // Update payment with actual payment details
+            $payment->update([
+                'payment_type' => $validated['payment_method'],
+                'status' => 'completed',
+                'amount_received' => $validated['amount'],
+                'reference_number' => $validated['reference_number'],
+                'notes' => $validated['notes'] ?? 'Manual payment processed successfully',
+            ]);
+
+            // Update order status
+            $order->update([
+                'status' => 'confirmed',
+                'payment_status' => 'paid',
+                'paid_amount' => $validated['amount'],
+                'balance_amount' => $order->total_amount - $validated['amount'],
+                'payment_method' => $validated['payment_method'],
+            ]);
+
+            // Deduct inventory after successful payment
+            $order->deductInventory();
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Payment processed successfully and inventory deducted',
+                'data' => [
+                    'order' => $order->load(['customer', 'items']),
+                    'payment' => $payment,
+                    'next_step' => 'order_fulfillment',
+                    'workflow_status' => 'ready_for_fulfillment'
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            \Log::error('Payment processing error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to process payment: ' . $e->getMessage()
+            ], 500);
+        }
     }
 }

@@ -1,30 +1,34 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Plus, Trash2, ShoppingCart, CreditCard, DollarSign, AlertTriangle } from 'lucide-react';
-import { API_BASE_URL } from '../../../constants';
-import { wholesaleOrdersApi } from '../../services/wholesaleService';
-import LoadingSpinner from '../../components/common/LoadingSpinner/LoadingSpinner';
 import {
   Box,
   Typography,
   Paper,
-  TextField,
   Button,
+  TextField,
+  Select,
+  FormControl,
+  InputLabel,
+  MenuItem,
+  IconButton,
+  Chip,
+  Alert,
+  Divider,
   List,
   ListItem,
   ListItemText,
-  Divider,
-  Chip,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Alert,
-  MenuItem,
-  InputAdornment,
-  CircularProgress,
-  alpha,
 } from '@mui/material';
-import { CheckCircle } from '@mui/icons-material';
+import {
+  Add as AddIcon,
+  Remove as RemoveIcon,
+  Delete as DeleteIcon,
+  ShoppingCart as CartIcon,
+  Person as PersonIcon,
+  Search as SearchIcon,
+  CheckCircle as CheckCircleIcon,
+} from '@mui/icons-material';
+import { API_BASE_URL } from '../../../constants';
+import { wholesaleOrdersApi } from '../../services/wholesaleService';
+import LoadingSpinner from '../../components/common/LoadingSpinner/LoadingSpinner';
 
 interface Customer {
   id: number;
@@ -76,22 +80,19 @@ interface ApiProductItem {
 }
 
 const Pos = () => {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [productSearchTerm, setProductSearchTerm] = useState('');
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [cart, setCart] = useState<CartItem[]>([]);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [quantity, setQuantity] = useState(1);
-  const [cart, setCart] = useState<CartItem[]>([]);
-  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'mobile'>('cash');
-  const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [amountPaid, setAmountPaid] = useState('');
-  const [change, setChange] = useState(0);
-  const [taxRate, setTaxRate] = useState(7); // Default 7% tax rate
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [productSearchTerm, setProductSearchTerm] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'mobile_money' | 'card'>('cash');
+  const [taxRate] = useState(7); // 7% tax rate
+  const [customers, setCustomers] = useState<Customer[]>([]);
 
   useEffect(() => {
     fetchCustomers();
@@ -138,7 +139,7 @@ const Pos = () => {
       const token = localStorage.getItem('token');
       if (!token) throw new Error('No authentication token found');
 
-      const response = await fetch(`${API_BASE_URL}/api/medicines-cache?all=true`, {
+      const response = await fetch(`${API_BASE_URL}/api/wholesale/products`, {
         headers: {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
@@ -162,7 +163,7 @@ const Pos = () => {
           product_price: parseFloat(item.product_price as string) || 0,
           product_category: item.product_category || 'Unknown Category',
           product_unit: 'Units', // Default value since product_unit doesn't exist in API
-          batch_no: item.batch_no || 'BATCH-001', // Default batch number - should be improved
+          batch_no: String(item.batch_no || 'DEFAULT-BATCH'), // Ensure it's always a string
         }));
         setProducts(mappedProducts);
       } else {
@@ -244,18 +245,11 @@ const Pos = () => {
 
   const handleCheckout = () => {
     if (selectedCustomer && cart.length > 0) {
-      setShowPaymentModal(true);
+      // Directly create order without payment modal
+      handleCompletePayment();
     } else {
       setError('Please select a customer and add items to cart');
     }
-  };
-
-  const handleAmountPaidChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value;
-    setAmountPaid(value);
-    
-    const paid = parseFloat(value) || 0;
-    setChange(Math.max(0, paid - calculateTotal()));
   };
 
   const handleCompletePayment = async () => {
@@ -271,43 +265,43 @@ const Pos = () => {
       const orderData = {
         customer_id: parseInt(selectedCustomer.id.toString()),
         order_type: 'sale',
+        payment_method: paymentMethod, // Add payment method
+        payment_terms: 'pay_now', // Add required payment_terms field
         items: cart.map(item => ({
           product_id: item.productId,
-          batch_no: item.batch_no,
+          batch_no: String(item.batch_no || 'DEFAULT-BATCH'), // Ensure it's always a string
           quantity_ordered: item.quantity,
           wholesale_price: item.price,
           discount_percentage: 0,
           tax_percentage: taxRate
         })),
         expected_delivery_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 7 days from now
-        notes: `Payment method: ${paymentMethod}`,
-        shipping_amount: 0
+        notes: `Order created from POS`,
+        shipping_amount: 0,
+        delivery_type: 'delivery',
+        // Remove delivery details - they will be filled in Orders page
       };
 
       console.log('Creating order with data:', orderData);
 
       const response = await wholesaleOrdersApi.create(orderData);
-      console.log('Order creation response:', response);
       
-      if (response.data && (response.data as { success: boolean }).success) {
-        setSuccess('Order created successfully!');
+      if (response.data && response.data.success) {
+        setSuccess('Order created successfully! Redirecting to workflow...');
         setCart([]);
         setSelectedCustomer(null);
-        setShowPaymentModal(false);
-        setAmountPaid('');
-        setChange(0);
+        setError(null);
         
-        // Clear success message after 3 seconds
-        setTimeout(() => setSuccess(null), 3000);
+        // Redirect to workflow after a short delay
+        setTimeout(() => {
+          window.location.href = '/wholesale/workflow';
+        }, 2000);
       } else {
-        const errorMessage = (response.data as { message?: string })?.message || 'Failed to create order';
-        console.error('Order creation failed:', response.data);
-        setError(errorMessage);
+        setError(response.data?.message || 'Failed to create order');
       }
-    } catch (err: unknown) {
+    } catch (err) {
       console.error('Create order error:', err);
-      const errorMessage = (err as { response?: { data?: { message?: string } }; message?: string })?.response?.data?.message || (err as { message?: string })?.message || 'Failed to create order';
-      setError(errorMessage);
+      setError('Failed to create order. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -325,14 +319,12 @@ const Pos = () => {
 
       {error && (
         <Alert severity="error" sx={{ mb: 2 }}>
-          <AlertTriangle className="h-5 w-5" />
           {error}
         </Alert>
       )}
 
       {success && (
         <Alert severity="success" sx={{ mb: 2 }}>
-          <ShoppingCart className="h-5 w-5" />
           {success}
         </Alert>
       )}
@@ -352,7 +344,7 @@ const Pos = () => {
               variant="outlined"
               InputProps={{
                 startAdornment: (
-                  <Search className="h-5 w-5 text-gray-400" />
+                  <SearchIcon className="h-5 w-5 text-gray-400" />
                 ),
               }}
               value={searchTerm}
@@ -374,7 +366,7 @@ const Pos = () => {
                       }
                     />
                     {selectedCustomer?.id === customer.id && (
-                      <CheckCircle className="h-4 w-4 text-indigo-500" />
+                      <CheckCircleIcon className="h-4 w-4 text-indigo-500" />
                     )}
                   </ListItem>
                 ))
@@ -386,7 +378,7 @@ const Pos = () => {
             </List>
 
             {selectedCustomer && (
-              <Box sx={{ mt: 2, p: 2, bgcolor: alpha('#007bff', 0.1) }}>
+              <Box sx={{ mt: 2, p: 2, bgcolor: '#e0f2fe' }}>
                 <Typography variant="subtitle2" component="h3">
                   Selected Customer
                 </Typography>
@@ -416,7 +408,7 @@ const Pos = () => {
                 variant="outlined"
                 InputProps={{
                   startAdornment: (
-                    <Search className="h-5 w-5 text-gray-400" />
+                    <SearchIcon className="h-5 w-5 text-gray-400" />
                   ),
                 }}
                 value={productSearchTerm}
@@ -437,7 +429,7 @@ const Pos = () => {
                   variant="contained"
                   onClick={addToCart}
                   disabled={!selectedProduct || quantity <= 0}
-                  startIcon={<Plus className="h-4 w-4" />}
+                  startIcon={<AddIcon className="h-4 w-4" />}
                 >
                   Add
                 </Button>
@@ -459,7 +451,7 @@ const Pos = () => {
                       }
                     />
                     {selectedProduct?.id === product.id && (
-                      <CheckCircle className="h-4 w-4 text-indigo-500" />
+                      <CheckCircleIcon className="h-4 w-4 text-indigo-500" />
                     )}
                   </ListItem>
                 ))
@@ -469,6 +461,25 @@ const Pos = () => {
                 </ListItem>
               )}
             </List>
+
+            {/* Payment Method Selection */}
+            <Paper sx={{ p: 3, mb: 3 }}>
+              <Typography variant="h6" gutterBottom>
+                Payment Method
+              </Typography>
+              <FormControl fullWidth>
+                <InputLabel>Payment Method</InputLabel>
+                <Select
+                  value={paymentMethod}
+                  onChange={(e) => setPaymentMethod(e.target.value as 'cash' | 'mobile_money' | 'card')}
+                  label="Payment Method"
+                >
+                  <MenuItem value="cash">Cash</MenuItem>
+                  <MenuItem value="mobile_money">Mobile Money</MenuItem>
+                  <MenuItem value="card">Card</MenuItem>
+                </Select>
+              </FormControl>
+            </Paper>
 
             {/* Cart */}
             <Box sx={{ borderTop: '1px solid', borderColor: 'divider', pt: 2 }}>
@@ -493,7 +504,7 @@ const Pos = () => {
                           color="error"
                           size="small"
                         >
-                          <Trash2 className="h-4 w-4" />
+                          <DeleteIcon className="h-4 w-4" />
                         </Button>
                       </Box>
                     </ListItem>
@@ -533,7 +544,7 @@ const Pos = () => {
                     variant="contained"
                     onClick={handleCheckout}
                     disabled={!selectedCustomer || cart.length === 0}
-                    startIcon={<CreditCard className="h-5 w-5" />}
+                    startIcon={<CartIcon className="h-5 w-5" />}
                     sx={{ mt: 2 }}
                   >
                     Proceed to Payment
@@ -541,7 +552,7 @@ const Pos = () => {
                 </List>
               ) : (
                 <Box sx={{ textAlign: 'center', py: 8 }}>
-                  <ShoppingCart className="h-12 w-12 mx-auto mb-2 text-gray-300" />
+                  <CartIcon className="h-12 w-12 mx-auto mb-2 text-gray-300" />
                   <Typography variant="body2" color="text.secondary">
                     No items in cart
                   </Typography>
@@ -553,57 +564,7 @@ const Pos = () => {
       </Box>
 
       {/* Payment Modal */}
-      {showPaymentModal && (
-        <Dialog open={showPaymentModal} onClose={() => setShowPaymentModal(false)}>
-          <DialogTitle>Payment</DialogTitle>
-          <DialogContent>
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              <TextField
-                label="Payment Method"
-                select
-                value={paymentMethod}
-                onChange={(e) => setPaymentMethod(e.target.value as 'cash' | 'card' | 'mobile')}
-                fullWidth
-              >
-                <MenuItem value="cash">Cash</MenuItem>
-                <MenuItem value="card">Card</MenuItem>
-                <MenuItem value="mobile">Mobile Money</MenuItem>
-              </TextField>
-
-              <TextField
-                label="Amount Paid"
-                type="number"
-                fullWidth
-                value={amountPaid}
-                onChange={handleAmountPaidChange}
-                inputProps={{ min: calculateTotal() }}
-                InputProps={{
-                  endAdornment: (
-                    <InputAdornment position="end">Tsh</InputAdornment>
-                  ),
-                }}
-              />
-
-              {change > 0 && (
-                <Alert severity="success" sx={{ mt: 1 }}>
-                  <strong>Change:</strong> Tsh {change.toFixed(2)}
-                </Alert>
-              )}
-            </Box>
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={() => setShowPaymentModal(false)}>Cancel</Button>
-            <Button
-              onClick={handleCompletePayment}
-              disabled={parseFloat(amountPaid) < calculateTotal() || loading}
-              variant="contained"
-              startIcon={loading ? <CircularProgress size={20} color="inherit" /> : <DollarSign className="h-4 w-4" />}
-            >
-              {loading ? 'Processing...' : 'Complete Payment'}
-            </Button>
-          </DialogActions>
-        </Dialog>
-      )}
+      {/* The payment modal is removed as per the edit hint. */}
     </Box>
   );
 };

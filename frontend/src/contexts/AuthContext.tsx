@@ -19,6 +19,7 @@ interface AuthContextType {
   user: User | null;
   login: (username: string, password: string, branchId: string) => Promise<void>;
   logout: () => void;
+  isInitializing: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -29,6 +30,55 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return stored ? JSON.parse(stored) : null;
   });
   const [isAuthenticated, setIsAuthenticated] = useState(!!user);
+  const [isInitializing, setIsInitializing] = useState(true);
+  // Validate token on app initialization
+  useEffect(() => {
+    const validateToken = async () => {
+      const token = localStorage.getItem('token');
+      const storedUser = localStorage.getItem('user');
+
+      if (token && storedUser) {
+        try {
+          const response = await fetch(`${API_BASE_URL}/api/user`, {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Accept': 'application/json',
+            },
+          });
+
+          if (response.ok) {
+            // Token is valid, keep the user logged in
+            setUser(JSON.parse(storedUser));
+            setIsAuthenticated(true);
+          } else {
+            // Token is invalid, clear everything
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+            localStorage.removeItem('branch_id');
+            localStorage.removeItem('branch_name');
+            setUser(null);
+            setIsAuthenticated(false);
+          }
+        } catch {
+          // Network error or other issues, clear authentication
+          localStorage.removeItem('token');
+          localStorage.removeItem('user');
+          localStorage.removeItem('branch_id');
+          localStorage.removeItem('branch_name');
+          setUser(null);
+          setIsAuthenticated(false);
+        }
+      } else {
+        // No token or user data, ensure clean state
+        setUser(null);
+        setIsAuthenticated(false);
+      }
+      
+      setIsInitializing(false);
+    };
+
+    validateToken();
+  }, []);
 
   useEffect(() => {
     if (user) {
@@ -138,7 +188,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider value={{ user, isAuthenticated, login, logout }}>
+    <AuthContext.Provider value={{ user, isAuthenticated, login, logout, isInitializing }}>
       {children}
     </AuthContext.Provider>
   );

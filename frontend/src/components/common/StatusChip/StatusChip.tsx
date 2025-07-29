@@ -28,6 +28,23 @@ const StatusChip: React.FC<StatusChipProps> = ({
   colorMap = defaultColorMap,
   ...props
 }) => {
+  // Handle undefined or null status
+  if (!status) {
+    return (
+      <Chip
+        label="Unknown"
+        color="default"
+        size="small"
+        variant="filled"
+        sx={{
+          fontWeight: 500,
+          textTransform: 'capitalize',
+        }}
+        {...props}
+      />
+    );
+  }
+  
   const color = colorMap[status.toLowerCase()] || 'default';
   
   return (

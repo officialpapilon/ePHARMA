@@ -116,13 +116,22 @@ const ManagementDashboard: React.FC = () => {
       });
 
       if (!response.ok) {
-        throw new Error(`Failed to fetch dashboard data: ${response.status}`);
+        const errorText = await response.text();
+        console.error('Management dashboard API error:', {
+          status: response.status,
+          statusText: response.statusText,
+          body: errorText
+        });
+        throw new Error(`Failed to fetch dashboard data: ${response.status} - ${errorText}`);
       }
 
       const result = await response.json();
+      console.log('Management dashboard API response:', result);
+      
       if (result.success && result.data) {
         setDashboardData(result.data);
       } else {
+        console.error('Management dashboard API returned unsuccessful response:', result);
         setDashboardData(null);
       }
     } catch (err: unknown) {

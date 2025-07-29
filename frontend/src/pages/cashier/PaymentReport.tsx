@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, Download, Filter, Search, TrendingUp, TrendingDown, DollarSign, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Download, TrendingUp, TrendingDown, DollarSign, ChevronLeft, ChevronRight } from 'lucide-react';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { useTheme } from '@mui/material/styles';
@@ -34,8 +34,8 @@ interface SummaryStats {
 
 const PaymentReport = () => {
   const theme = useTheme();
-  const [startDate, setStartDate] = useState('2025-01-01');
-  const [endDate, setEndDate] = useState('2025-12-31');
+  const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
+  const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'All' | 'Paid' | 'Pending'>('All');
   const [paymentMethodFilter, setPaymentMethodFilter] = useState('All');
@@ -49,7 +49,7 @@ const PaymentReport = () => {
 
   useEffect(() => {
     fetchPaymentReports();
-  }, []);
+  }, [startDate, endDate]);
 
   const fetchPaymentReports = async () => {
     setLoading(true);
@@ -60,7 +60,12 @@ const PaymentReport = () => {
         throw new Error('No authentication token found');
       }
 
-      const response = await fetch(`${API_BASE_URL}/api/payment-approve`, {
+      const params = new URLSearchParams({
+        start_date: startDate,
+        end_date: endDate,
+      });
+
+      const response = await fetch(`${API_BASE_URL}/api/payment-approve?${params}`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -93,9 +98,10 @@ const PaymentReport = () => {
       }
 
       setReportData(rawData);
-    } catch (err: any) {
-      console.error('Fetch payment reports error:', err.message);
-      setError('Unable to fetch payment reports: ' + err.message);
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
+      console.error('Fetch payment reports error:', errorMessage);
+      setError('Unable to fetch payment reports: ' + errorMessage);
       setReportData([]);
     } finally {
       setLoading(false);
@@ -103,37 +109,37 @@ const PaymentReport = () => {
   };
 
   const filteredData = reportData.filter((item) => {
-    const itemDate = new Date(item.approved_at || item.created_at.split('T')[0]);
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    end.setHours(23, 59, 59, 999);
-
-    const inDateRange = itemDate >= start && itemDate <= end;
-
     const matchesSearch =
       item.transaction_ID.toLowerCase().includes(searchTerm.toLowerCase()) ||
       item.Patient_ID.toLowerCase().includes(searchTerm.toLowerCase()) ||
       item.approved_by.toLowerCase().includes(searchTerm.toLowerCase());
 
-    const normalizedStatus = item.status === 'Approved' ? 'Paid' : 'Pending';
+    const normalizedStatus = item.status === 'Paid' ? 'Paid' : 'Pending';
     const matchesStatus = statusFilter === 'All' || normalizedStatus === statusFilter;
 
     const matchesPaymentMethod =
       paymentMethodFilter === 'All' || item.approved_payment_method === paymentMethodFilter;
 
-    return inDateRange && matchesSearch && matchesStatus && matchesPaymentMethod;
+    return matchesSearch && matchesStatus && matchesPaymentMethod;
   });
 
   // Calculate summary statistics
   const summaryStats: SummaryStats = {
     totalTransactions: filteredData.length,
-    totalAmount: filteredData.reduce((sum, item) => sum + parseFloat(item.approved_amount), 0),
-    completedPayments: filteredData.filter((item) => item.status === 'Approved').length,
-    pendingPayments: filteredData.filter((item) => item.status !== 'Approved').length,
-    averageAmount: filteredData.length > 0 ? filteredData.reduce((sum, item) => sum + parseFloat(item.approved_amount), 0) / filteredData.length : 0,
-    cashPayments: filteredData.filter((item) => item.approved_payment_method === 'CASH').length,
-    cardPayments: filteredData.filter((item) => item.approved_payment_method === 'CARD').length,
-    mobilePayments: filteredData.filter((item) => item.approved_payment_method === 'MOBILE').length,
+    totalAmount: filteredData
+      .filter((item) => item.status === 'Paid')
+      .reduce((sum, item) => sum + parseFloat(item.approved_amount), 0),
+    completedPayments: filteredData.filter((item) => item.status === 'Paid').length,
+    pendingPayments: filteredData.filter((item) => item.status !== 'Paid').length,
+    averageAmount: filteredData.filter((item) => item.status === 'Paid').length > 0 
+      ? filteredData
+          .filter((item) => item.status === 'Paid')
+          .reduce((sum, item) => sum + parseFloat(item.approved_amount), 0) / 
+        filteredData.filter((item) => item.status === 'Paid').length 
+      : 0,
+    cashPayments: filteredData.filter((item) => item.approved_payment_method === 'CASH' && item.status === 'Paid').length,
+    cardPayments: filteredData.filter((item) => item.approved_payment_method === 'CARD' && item.status === 'Paid').length,
+    mobilePayments: filteredData.filter((item) => item.approved_payment_method === 'MOBILE' && item.status === 'Paid').length,
   };
 
   // Pagination logic
@@ -162,7 +168,7 @@ const PaymentReport = () => {
     doc.setFontSize(12);
     doc.text(`Date Range: ${startDate} to ${endDate}`, 14, 32);
 
-    (doc as any).autoTable({
+    (doc as unknown as { autoTable: (options: unknown) => void }).autoTable({
       startY: 40,
       head: [
         ['Payment ID', 'Transaction ID', 'Patient ID', 'Date', 'Cashier', 'Payment Method', 'Amount', 'Status'],
@@ -175,13 +181,13 @@ const PaymentReport = () => {
         item.approved_by,
         item.approved_payment_method,
         `Tsh ${parseFloat(item.approved_amount).toFixed(2)}`,
-        item.status === 'Approved' ? 'Paid' : 'Pending',
+        item.status === 'Paid' ? 'Paid' : 'Pending',
       ]),
       styles: { fontSize: 10 },
       headStyles: { fillColor: [66, 66, 66] },
     });
 
-    const finalY = (doc as any).lastAutoTable.finalY + 10;
+    const finalY = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 10;
     doc.setFontSize(12);
     doc.text('Summary', 14, finalY);
     doc.text(`Total Transactions: ${summaryStats.totalTransactions}`, 14, finalY + 10);
@@ -224,7 +230,9 @@ const PaymentReport = () => {
       <header style={{ background: theme.palette.background.paper, boxShadow: theme.shadows[1], marginBottom: 24, borderRadius: 16 }}>
         <div style={{ maxWidth: '100%', padding: '24px' }}>
           <h1 style={{ fontSize: 28, fontWeight: 700, color: theme.palette.text.primary, margin: 0 }}>Payment Report</h1>
-          <p style={{ fontSize: 16, color: theme.palette.text.secondary, margin: '8px 0 0 0' }}>Comprehensive payment transaction analysis</p>
+          <p style={{ fontSize: 16, color: theme.palette.text.secondary, margin: '8px 0 0 0' }}>
+            Comprehensive payment transaction analysis (Total Amount includes only paid transactions)
+          </p>
         </div>
       </header>
 
@@ -463,11 +471,11 @@ const PaymentReport = () => {
                             fontSize: 12,
                             fontWeight: 600,
                             borderRadius: 12,
-                            background: item.status === 'Approved' ? theme.palette.success.light : theme.palette.warning.light,
-                            color: item.status === 'Approved' ? theme.palette.success.dark : theme.palette.warning.dark,
+                            background: item.status === 'Paid' ? theme.palette.success.light : theme.palette.warning.light,
+                            color: item.status === 'Paid' ? theme.palette.success.dark : theme.palette.warning.dark,
                           }}
                         >
-                          {item.status === 'Approved' ? 'Paid' : 'Pending'}
+                          {item.status === 'Paid' ? 'Paid' : 'Pending'}
                         </span>
                       </td>
                     </tr>

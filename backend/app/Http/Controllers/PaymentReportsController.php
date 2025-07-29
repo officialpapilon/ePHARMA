@@ -54,7 +54,7 @@ class PaymentReportsController extends Controller
             }
 
             if ($startDate && $endDate) {
-                $query->whereBetween('created_at', [$startDate, $endDate]);
+                $query->whereBetween('approved_at', [$startDate . ' 00:00:00', $endDate . ' 23:59:59']);
             }
 
             // Apply sorting
@@ -62,13 +62,19 @@ class PaymentReportsController extends Controller
 
             $payments = $query->paginate($perPage);
 
-            // Calculate summary statistics
+            // Calculate summary statistics with the same filters
+            $summaryQuery = PaymentApproval::query();
+            
+            if ($startDate && $endDate) {
+                $summaryQuery->whereBetween('approved_at', [$startDate . ' 00:00:00', $endDate . ' 23:59:59']);
+            }
+
             $summary = [
-                'total_payments' => PaymentApproval::count(),
-                'total_revenue' => PaymentApproval::where('status', 'approved')->sum('approved_amount'),
-                'pending_payments' => PaymentApproval::where('status', 'pending')->count(),
-                'approved_payments' => PaymentApproval::where('status', 'approved')->count(),
-                'rejected_payments' => PaymentApproval::where('status', 'rejected')->count(),
+                'total_payments' => $summaryQuery->count(),
+                'total_revenue' => $summaryQuery->clone()->where('status', 'Paid')->sum('approved_amount'),
+                'pending_payments' => $summaryQuery->clone()->where('status', 'Pending')->count(),
+                'approved_payments' => $summaryQuery->clone()->where('status', 'Paid')->count(),
+                'rejected_payments' => $summaryQuery->clone()->where('status', 'Rejected')->count(),
                 'payment_methods' => PaymentApproval::select('approved_payment_method')->distinct()->pluck('approved_payment_method')
             ];
 
@@ -103,7 +109,7 @@ class PaymentReportsController extends Controller
             $startDate = $request->input('start_date', Carbon::now()->subYear()->format('Y-m-d'));
             $endDate = $request->input('end_date', Carbon::now()->format('Y-m-d'));
 
-            $query = PaymentApproval::where('status', 'approved')
+            $query = PaymentApproval::where('status', 'Paid')
                 ->whereBetween('created_at', [$startDate, $endDate]);
 
             switch ($period) {
@@ -156,7 +162,7 @@ class PaymentReportsController extends Controller
             }
 
             // Payment method breakdown
-            $paymentMethodBreakdown = PaymentApproval::where('status', 'approved')
+            $paymentMethodBreakdown = PaymentApproval::where('status', 'Paid')
                 ->whereBetween('created_at', [$startDate, $endDate])
                 ->select('approved_payment_method')
                 ->selectRaw('SUM(approved_amount) as total_amount')
@@ -166,7 +172,7 @@ class PaymentReportsController extends Controller
 
             // Top customers
             $topCustomers = PaymentApproval::with('customer')
-                ->where('status', 'approved')
+                ->where('status', 'Paid')
                 ->whereBetween('created_at', [$startDate, $endDate])
                 ->select('Patient_ID')
                 ->selectRaw('SUM(approved_amount) as total_spent')

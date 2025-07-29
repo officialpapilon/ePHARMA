@@ -12,9 +12,18 @@ use Illuminate\Validation\ValidationException;
 
 class PaymentApprovalController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        $paymentApprovals = PaymentApproval::all();
+        $startDate = $request->input('start_date');
+        $endDate = $request->input('end_date');
+        
+        $query = PaymentApproval::query();
+        
+        if ($startDate && $endDate) {
+            $query->whereBetween('created_at', [$startDate . ' 00:00:00', $endDate . ' 23:59:59']);
+        }
+        
+        $paymentApprovals = $query->get();
         
         $enhancedApprovals = $paymentApprovals->map(function ($approval) {
             return $this->enhanceApprovalData($approval);

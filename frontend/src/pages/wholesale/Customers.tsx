@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { useTheme } from '@mui/material';
 import LoadingSpinner from '../../components/common/LoadingSpinner/LoadingSpinner';
+import { API_BASE_URL } from '../../../constants';
 
 interface Customer {
   id: number;
@@ -88,7 +89,7 @@ const Customers: React.FC = () => {
         throw new Error('No authentication token found');
       }
 
-      const response = await fetch(`http://localhost:8000/api/wholesale/customers`, {
+      const response = await fetch(`${API_BASE_URL}/api/wholesale/customers`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
@@ -147,7 +148,7 @@ const Customers: React.FC = () => {
         throw new Error('No authentication token found');
       }
 
-      const response = await fetch(`http://localhost:8000/api/wholesale/customers`, {
+      const response = await fetch(`${API_BASE_URL}/api/wholesale/customers`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -192,7 +193,7 @@ const Customers: React.FC = () => {
         throw new Error('No authentication token found');
       }
 
-      const response = await fetch(`http://localhost:8000/api/wholesale/customers/${editingCustomer.id}`, {
+      const response = await fetch(`${API_BASE_URL}/api/wholesale/customers/${editingCustomer.id}`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -238,7 +239,7 @@ const Customers: React.FC = () => {
         throw new Error('No authentication token found');
       }
 
-      const response = await fetch(`http://localhost:8000/api/wholesale/customers/${customerId}`, {
+        const response = await fetch(`${API_BASE_URL}/api/wholesale/customers/${customerId}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`,

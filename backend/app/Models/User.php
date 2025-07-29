@@ -7,6 +7,9 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Laravel\Sanctum\HasApiTokens;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Facades\Log;
+use App\Models\PaymentApproval;
+use App\Models\FinancialActivity;
+use App\Models\WholesalePayment;
 
 class User extends Authenticatable
 {
@@ -47,6 +50,21 @@ class User extends Authenticatable
     public function pharmacies()
     {
         return $this->hasMany(Pharmacy::class);
+    }
+
+    public function paymentApprovals()
+    {
+        return $this->hasMany(PaymentApproval::class, 'created_by');
+    }
+
+    public function financialActivities()
+    {
+        return $this->hasMany(FinancialActivity::class, 'created_by');
+    }
+
+    public function wholesalePayments()
+    {
+        return $this->hasMany(WholesalePayment::class, 'received_by');
     }
 
     public function hasActiveSubscription()

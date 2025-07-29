@@ -135,7 +135,7 @@ const Orders: React.FC = () => {
   useEffect(() => {
     const fetchCustomers = async () => {
       try {
-        const response = await apiCall('/wholesale/customers');
+        const response = await apiCall('api/wholesale/customers');
         if (response.success) {
           setCustomers(response.data);
         }
@@ -146,7 +146,7 @@ const Orders: React.FC = () => {
 
     const fetchProducts = async () => {
       try {
-        const response = await apiCall('/wholesale/products');
+        const response = await apiCall('api/wholesale/products');
         if (response.success) {
           setProducts(response.data);
         }
@@ -172,7 +172,7 @@ const Orders: React.FC = () => {
         ...(endDate && { end_date: endDate.toISOString().split('T')[0] }),
       });
 
-      const response = await apiCall(`/wholesale/orders?${params}`);
+      const response = await apiCall(`api/wholesale/orders?${params}`);
       if (response.success) {
         setOrders(response.data);
         setTotal(response.meta.total);
@@ -191,7 +191,7 @@ const Orders: React.FC = () => {
 
   const handleStatusAction = async (orderId: number, action: string) => {
     try {
-      const response = await apiCall(`/wholesale/orders/${orderId}/${action}`, {
+      const response = await apiCall(`api/wholesale/orders/${orderId}/${action}`, {
         method: 'POST',
       });
 
@@ -207,7 +207,7 @@ const Orders: React.FC = () => {
 
   const handleDelete = async (orderId: number) => {
     try {
-      const response = await apiCall(`/wholesale/orders/${orderId}`, {
+      const response = await apiCall(`api/wholesale/orders/${orderId}`, {
         method: 'DELETE',
       });
 
@@ -218,6 +218,23 @@ const Orders: React.FC = () => {
       }
     } catch (error) {
       showNotification.showError('Failed to delete order');
+    }
+  };
+
+  const handleUpdateDeliveryInfo = async (orderId: number, deliveryData: any) => {
+    try {
+      const response = await apiCall(`api/wholesale/orders/${orderId}`, {
+        method: 'PUT',
+        data: deliveryData
+      });
+
+      if (response.success) {
+        showNotification.showSuccess('Delivery information updated successfully');
+        fetchOrders();
+        setOpenModal(false);
+      }
+    } catch (error) {
+      showNotification.showError('Failed to update delivery information');
     }
   };
 
@@ -241,7 +258,7 @@ const Orders: React.FC = () => {
         }))
       };
 
-      const response = await apiCall('/wholesale/orders', {
+      const response = await apiCall('api/wholesale/orders', {
         method: 'POST',
         data: orderData
       });
@@ -550,6 +567,21 @@ const Orders: React.FC = () => {
                           <EditIcon />
                         </IconButton>
                       </Tooltip>
+                      {order.payment_status === 'paid' && !order.delivery_address && (
+                        <Tooltip title="Fill Delivery Info">
+                          <IconButton
+                            size="small"
+                            color="info"
+                            onClick={() => {
+                              setSelectedOrder(order);
+                              setModalType('edit');
+                              setOpenModal(true);
+                            }}
+                          >
+                            <DeliveryIcon />
+                          </IconButton>
+                        </Tooltip>
+                      )}
                       {order.status === 'pending' && (
                         <>
                           <Tooltip title="Confirm Order">

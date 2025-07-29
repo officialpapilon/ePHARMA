@@ -1,69 +1,62 @@
-import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
 import { API_BASE_URL } from '../../constants';
 
-class ApiClient {
-  private client: AxiosInstance;
+// Global API client with automatic 401 handling
+export const apiClient = {
+  async fetch(url: string, options: RequestInit = {}) {
+    const token = localStorage.getItem('token');
+    
+    const headers = {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+      ...options.headers,
+    };
 
-  constructor() {
-    this.client = axios.create({
-      baseURL: API_BASE_URL,
-      timeout: 30000,
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-        'ngrok-skip-browser-warning': 'true',
-      },
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const response = await fetch(`${API_BASE_URL}${url}`, {
+      ...options,
+      headers,
     });
 
-    this.setupInterceptors();
-  }
+    // Handle 401 Unauthorized responses
+    if (response.status === 401) {
+      // Clear authentication data
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      localStorage.removeItem('branch_id');
+      localStorage.removeItem('branch_name');
+      
+      // Redirect to login page
+      window.location.href = '/login';
+      throw new Error('Unauthorized - Please log in again');
+    }
 
-  private setupInterceptors() {
-    // Request interceptor
-    this.client.interceptors.request.use(
-      (config) => {
-        const token = localStorage.getItem('token');
-        if (token) {
-          config.headers.Authorization = `Bearer ${token}`;
-        }
-        return config;
-      },
-      (error) => Promise.reject(error)
-    );
+    return response;
+  },
 
-    // Response interceptor
-    this.client.interceptors.response.use(
-      (response) => response,
-      (error) => {
-        if (error.response?.status === 401) {
-          localStorage.removeItem('token');
-          localStorage.removeItem('user');
-          window.location.href = '/login';
-        }
-        return Promise.reject(error);
-      }
-    );
-  }
+  async get(url: string, options: RequestInit = {}) {
+    return this.fetch(url, { ...options, method: 'GET' });
+  },
 
-  async get<T>(url: string, config?: AxiosRequestConfig): Promise<AxiosResponse<T>> {
-    return this.client.get(url, config);
-  }
+  async post(url: string, data: any, options: RequestInit = {}) {
+    return this.fetch(url, {
+      ...options,
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
 
-  async post<T>(url: string, data?: any, config?: AxiosRequestConfig): Promise<AxiosResponse<T>> {
-    return this.client.post(url, data, config);
-  }
+  async put(url: string, data: any, options: RequestInit = {}) {
+    return this.fetch(url, {
+      ...options,
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
 
-  async put<T>(url: string, data?: any, config?: AxiosRequestConfig): Promise<AxiosResponse<T>> {
-    return this.client.put(url, data, config);
-  }
-
-  async delete<T>(url: string, config?: AxiosRequestConfig): Promise<AxiosResponse<T>> {
-    return this.client.delete(url, config);
-  }
-
-  async patch<T>(url: string, data?: any, config?: AxiosRequestConfig): Promise<AxiosResponse<T>> {
-    return this.client.patch(url, data, config);
-  }
-}
-
-export const apiClient = new ApiClient();
+  async delete(url: string, options: RequestInit = {}) {
+    return this.fetch(url, { ...options, method: 'DELETE' });
+  },
+};

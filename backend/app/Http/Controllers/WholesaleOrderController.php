@@ -4,13 +4,15 @@ namespace App\Http\Controllers;
 
 use App\Models\WholesaleOrder;
 use App\Models\WholesaleOrderItem;
+use App\Models\WholesalePayment;
 use App\Models\WholesaleCustomer;
 use App\Models\MedicinesCache;
+use App\Models\User;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Validator;
 use Carbon\Carbon;
 
 class WholesaleOrderController extends Controller
@@ -104,181 +106,163 @@ class WholesaleOrderController extends Controller
         }
     }
 
+    /**
+     * Store a newly created order with inventory reservation
+     */
     public function store(Request $request)
     {
         try {
-            Log::info('Order creation started', $request->all());
-            
-            DB::beginTransaction();
-
-            $validator = Validator::make($request->all(), [
+            $validated = $request->validate([
                 'customer_id' => 'required|exists:wholesale_customers,id',
-                'order_type' => 'required|in:sale,quotation,reservation',
+                'order_type' => 'required|in:sale,purchase,return',
+                'payment_terms' => 'required|in:pay_now,pay_later,partial_payment',
+                'payment_method' => 'required|in:cash,mobile_money,card',
+                'delivery_type' => 'required|in:delivery,pickup',
                 'items' => 'required|array|min:1',
                 'items.*.product_id' => 'required|string',
-                'items.*.batch_no' => 'required|string',
+                'items.*.batch_no' => 'nullable|string', // Make batch_no nullable and ensure it's string
                 'items.*.quantity_ordered' => 'required|integer|min:1',
                 'items.*.wholesale_price' => 'required|numeric|min:0',
-                'items.*.discount_percentage' => 'nullable|numeric|min:0|max:100',
-                'items.*.tax_percentage' => 'nullable|numeric|min:0|max:100',
-                'shipping_amount' => 'nullable|numeric|min:0',
-                'expected_delivery_date' => 'nullable|date|after_or_equal:today',
-                'notes' => 'nullable|string',
-                'delivery_instructions' => 'nullable|string',
+                'items.*.discount_percentage' => 'required|numeric|min:0|max:100',
+                'items.*.tax_percentage' => 'required|numeric|min:0|max:100',
+                'expected_delivery_date' => 'required|date|after:today',
+                'notes' => 'nullable|string|max:500',
+                'shipping_amount' => 'required|numeric|min:0',
             ]);
 
-            if ($validator->fails()) {
-                Log::error('Validation failed', $validator->errors()->toArray());
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Validation failed',
-                    'errors' => $validator->errors()
-                ], 422);
+            DB::beginTransaction();
+
+            // Calculate totals
+            $subtotal = 0;
+            $totalTax = 0;
+            $totalDiscount = 0;
+
+            foreach ($validated['items'] as $item) {
+                $itemSubtotal = $item['quantity_ordered'] * $item['wholesale_price'];
+                $itemDiscount = ($itemSubtotal * $item['discount_percentage']) / 100;
+                $itemTax = (($itemSubtotal - $itemDiscount) * $item['tax_percentage']) / 100;
+                
+                $subtotal += $itemSubtotal;
+                $totalDiscount += $itemDiscount;
+                $totalTax += $itemTax;
             }
 
-            Log::info('Validation passed');
+            $totalAmount = $subtotal - $totalDiscount + $totalTax + $validated['shipping_amount'];
 
-            // Check customer credit limit
-            $customer = WholesaleCustomer::findOrFail($request->customer_id);
-            $totalAmount = 0;
+            // Create order
+            $order = WholesaleOrder::create([
+                'order_number' => 'ORD-' . date('Y') . '-' . str_pad(rand(1, 9999), 4, '0', STR_PAD_LEFT),
+                'customer_id' => $validated['customer_id'],
+                'created_by' => Auth::id() ?? 1,
+                'order_type' => $validated['order_type'],
+                'status' => 'pending_payment',
+                'payment_status' => 'pending',
+                'payment_terms' => $validated['payment_terms'],
+                'payment_method' => $validated['payment_method'],
+                'delivery_type' => $validated['delivery_type'],
+                'subtotal' => $subtotal,
+                'tax_amount' => $totalTax,
+                'discount_amount' => $totalDiscount,
+                'shipping_amount' => $validated['shipping_amount'],
+                'total_amount' => $totalAmount,
+                'paid_amount' => 0,
+                'balance_amount' => $totalAmount,
+                'order_date' => now(),
+                'expected_delivery_date' => $validated['expected_delivery_date'],
+                'due_date' => now()->addDays(30),
+                'notes' => $validated['notes'] ?? 'Order created from POS',
+                'delivery_instructions' => '',
+                'inventory_reserved' => false,
+                'inventory_deducted' => false,
+            ]);
 
-            // Calculate total amount
-            foreach ($request->items as $item) {
-                $subtotal = $item['quantity_ordered'] * $item['wholesale_price'];
-                $discount = ($subtotal * ($item['discount_percentage'] ?? 0)) / 100;
-                $taxableAmount = $subtotal - $discount;
-                $tax = ($taxableAmount * ($item['tax_percentage'] ?? 0)) / 100;
-                $totalAmount += $subtotal - $discount + $tax;
-            }
-
-            $totalAmount += $request->shipping_amount ?? 0;
-
-            Log::info('Total amount calculated', ['total' => $totalAmount]);
-
-            if (!$customer->canPlaceOrder($totalAmount)) {
-                Log::error('Customer credit limit exceeded', ['customer_id' => $customer->id, 'total' => $totalAmount]);
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Customer credit limit exceeded or customer is inactive'
-                ], 400);
-            }
-
-            Log::info('Credit check passed');
-
-            // Check stock availability
-            foreach ($request->items as $item) {
+            // Create order items
+            foreach ($validated['items'] as $item) {
+                // Fetch product details from medicines cache
                 $product = MedicinesCache::where('product_id', $item['product_id'])
                     ->where('batch_no', $item['batch_no'])
                     ->first();
 
                 if (!$product) {
-                    Log::error('Product not found', ['product_id' => $item['product_id'], 'batch_no' => $item['batch_no']]);
-                    return response()->json([
-                        'success' => false,
-                        'message' => "Product {$item['product_id']} with batch {$item['batch_no']} not found"
-                    ], 404);
-                }
-
-                if ($product->current_quantity < $item['quantity_ordered']) {
-                    Log::error('Insufficient stock', ['product' => $product->product_name, 'available' => $product->current_quantity, 'requested' => $item['quantity_ordered']]);
-                    return response()->json([
-                        'success' => false,
-                        'message' => "Insufficient stock for product {$product->product_name}. Available: {$product->current_quantity}, Requested: {$item['quantity_ordered']}"
-                    ], 400);
-                }
-            }
-
-            Log::info('Stock check passed');
-
-            // Get authenticated user with fallback
-            $user = null;
-            if ($request->user()) {
-                $user = $request->user();
-            } elseif (Auth::check()) {
-                $user = Auth::user();
-            } else {
-                // Try to get user from token
-                $token = $request->bearerToken();
-                if ($token) {
-                    $tokenModel = \Laravel\Sanctum\PersonalAccessToken::findToken($token);
-                    if ($tokenModel) {
-                        $user = $tokenModel->tokenable;
+                    // Try to find by product_id only
+                    $product = MedicinesCache::where('product_id', $item['product_id'])->first();
+                    if (!$product) {
+                        throw new \Exception("Product not found: {$item['product_id']}");
                     }
+                    Log::warning("Exact batch not found for product {$item['product_id']}, using available batch");
                 }
-            }
 
-            // Create order
-            $orderData = [
-                'customer_id' => $request->customer_id,
-                'created_by' => $user ? $user->id : 1, // Fallback to user ID 1 if no user found
-                'order_type' => $request->order_type,
-                'status' => 'draft',
-                'payment_status' => 'pending',
-                'shipping_amount' => $request->shipping_amount ?? 0,
-                'expected_delivery_date' => $request->expected_delivery_date,
-                'notes' => $request->notes,
-                'delivery_instructions' => $request->delivery_instructions,
-            ];
+                $itemSubtotal = $item['quantity_ordered'] * $item['wholesale_price'];
+                $itemDiscount = ($itemSubtotal * $item['discount_percentage']) / 100;
+                $itemTax = (($itemSubtotal - $itemDiscount) * $item['tax_percentage']) / 100;
+                $itemTotal = $itemSubtotal - $itemDiscount + $itemTax;
 
-            Log::info('Creating order with data', $orderData);
-
-            $order = WholesaleOrder::create($orderData);
-
-            Log::info('Order created', ['order_id' => $order->id]);
-
-            // Create order items
-            foreach ($request->items as $item) {
-                $product = MedicinesCache::where('product_id', $item['product_id'])
-                    ->where('batch_no', $item['batch_no'])
-                    ->first();
-
-                $itemData = [
+                WholesaleOrderItem::create([
                     'order_id' => $order->id,
                     'product_id' => $item['product_id'],
-                    'batch_no' => $item['batch_no'],
+                    'batch_no' => (string)($item['batch_no'] ?? 'DEFAULT-BATCH'), // Ensure it's always a string
                     'product_name' => $product->product_name,
                     'product_category' => $product->product_category,
                     'quantity_ordered' => $item['quantity_ordered'],
-                    'unit_price' => $product->product_price,
+                    'quantity_delivered' => 0,
+                    'unit_price' => $item['wholesale_price'],
                     'wholesale_price' => $item['wholesale_price'],
-                    'discount_percentage' => $item['discount_percentage'] ?? 0,
-                    'tax_percentage' => $item['tax_percentage'] ?? 0,
-                ];
-
-                Log::info('Creating order item', $itemData);
-
-                WholesaleOrderItem::create($itemData);
+                    'discount_percentage' => $item['discount_percentage'],
+                    'discount_amount' => $itemDiscount,
+                    'tax_percentage' => $item['tax_percentage'],
+                    'tax_amount' => $itemTax,
+                    'subtotal' => $itemSubtotal,
+                    'total' => $itemTotal,
+                    'notes' => null,
+                ]);
             }
 
-            Log::info('Order items created');
+            // Reserve inventory
+            $order->reserveInventory();
 
-            // Calculate totals
-            $order->calculateTotals();
-
-            Log::info('Totals calculated');
+            // Create pending payment record
+            $payment = WholesalePayment::create([
+                'payment_number' => 'PAY-' . date('Y') . '-' . str_pad(rand(1, 9999), 4, '0', STR_PAD_LEFT),
+                'order_id' => $order->id,
+                'customer_id' => $validated['customer_id'],
+                'received_by' => Auth::id() ?? 1,
+                'payment_type' => $validated['payment_method'],
+                'status' => 'pending',
+                'payment_category' => 'full_payment',
+                'amount' => $totalAmount,
+                'amount_received' => 0,
+                'reference_number' => 'REF-' . date('YmdHis') . rand(100, 999),
+                'bank_name' => null,
+                'account_number' => null,
+                'cheque_number' => null,
+                'payment_date' => now(),
+                'due_date' => now(),
+                'notes' => 'Payment initiated from POS',
+                'receipt_number' => null,
+                'is_receipt_generated' => false,
+                'is_invoice_generated' => false,
+                'invoice_number' => null,
+            ]);
 
             DB::commit();
 
-            Log::info('Order creation completed successfully', ['order_id' => $order->id]);
-
             return response()->json([
                 'success' => true,
-                'data' => $order->load(['customer', 'items']),
-                'message' => 'Order created successfully'
-            ], 201);
+                'message' => 'Order created successfully and inventory reserved',
+                'data' => [
+                    'order' => $order->load(['customer', 'items']),
+                    'payment' => $payment,
+                    'next_step' => 'payment_processing',
+                    'workflow_status' => 'payment_pending'
+                ]
+            ]);
 
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error('Order creation failed', [
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-                'request_data' => $request->all()
-            ]);
-            
+            Log::error('Order creation error: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to create order',
-                'error' => $e->getMessage()
+                'message' => 'Failed to create order: ' . $e->getMessage()
             ], 500);
         }
     }

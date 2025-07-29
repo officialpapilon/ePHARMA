@@ -15,10 +15,12 @@ class WholesaleOrder extends Model
         'order_number',
         'customer_id',
         'created_by',
+        'assigned_delivery_person_id',
         'order_type',
         'status',
         'payment_status',
         'payment_terms',
+        'payment_method',
         'delivery_type',
         'subtotal',
         'tax_amount',
@@ -34,10 +36,14 @@ class WholesaleOrder extends Model
         'notes',
         'delivery_instructions',
         'invoice_number',
+        'delivery_note_number',
         'is_invoiced',
         'is_delivered',
         'is_payment_processed',
         'is_delivery_scheduled',
+        'is_delivery_note_generated',
+        'inventory_reserved',
+        'inventory_deducted',
         'delivery_address',
         'delivery_contact_person',
         'delivery_contact_phone',
@@ -57,6 +63,11 @@ class WholesaleOrder extends Model
         'due_date' => 'date',
         'is_invoiced' => 'boolean',
         'is_delivered' => 'boolean',
+        'is_payment_processed' => 'boolean',
+        'is_delivery_scheduled' => 'boolean',
+        'is_delivery_note_generated' => 'boolean',
+        'inventory_reserved' => 'boolean',
+        'inventory_deducted' => 'boolean',
     ];
 
     // Relationships
@@ -83,6 +94,73 @@ class WholesaleOrder extends Model
     public function deliveries()
     {
         return $this->hasMany(WholesaleDelivery::class, 'order_id');
+    }
+
+    public function deliveryPerson()
+    {
+        return $this->belongsTo(User::class, 'assigned_delivery_person_id');
+    }
+
+    /**
+     * Reserve inventory for this order
+     */
+    public function reserveInventory()
+    {
+        if (!$this->inventory_reserved) {
+            foreach ($this->items as $item) {
+                $cacheItem = MedicinesCache::where('product_id', $item->product_id)
+                    ->where('batch_no', $item->batch_no)
+                    ->first();
+                
+                if ($cacheItem && $cacheItem->current_quantity >= $item->quantity_ordered) {
+                    $cacheItem->decrement('current_quantity', $item->quantity_ordered);
+                }
+            }
+            $this->update(['inventory_reserved' => true]);
+        }
+    }
+
+    /**
+     * Release reserved inventory
+     */
+    public function releaseInventory()
+    {
+        if ($this->inventory_reserved && !$this->inventory_deducted) {
+            foreach ($this->items as $item) {
+                $cacheItem = MedicinesCache::where('product_id', $item->product_id)
+                    ->where('batch_no', $item->batch_no)
+                    ->first();
+                
+                if ($cacheItem) {
+                    $cacheItem->increment('current_quantity', $item->quantity_ordered);
+                }
+            }
+            $this->update(['inventory_reserved' => false]);
+        }
+    }
+
+    /**
+     * Deduct inventory after payment
+     */
+    public function deductInventory()
+    {
+        if ($this->inventory_reserved && !$this->inventory_deducted) {
+            $this->update(['inventory_deducted' => true]);
+        }
+    }
+
+    /**
+     * Generate delivery note number
+     */
+    public function generateDeliveryNoteNumber()
+    {
+        if (!$this->delivery_note_number) {
+            $this->update([
+                'delivery_note_number' => 'DN-' . date('Y') . '-' . str_pad(rand(1, 9999), 4, '0', STR_PAD_LEFT),
+                'is_delivery_note_generated' => true
+            ]);
+        }
+        return $this->delivery_note_number;
     }
 
     // Scopes
@@ -206,25 +284,6 @@ class WholesaleOrder extends Model
         
         if ($lastInvoice) {
             $lastNumber = intval(substr($lastInvoice->invoice_number, -4));
-            $newNumber = $lastNumber + 1;
-        } else {
-            $newNumber = 1;
-        }
-        
-        return $prefix . $year . $month . str_pad($newNumber, 4, '0', STR_PAD_LEFT);
-    }
-
-    public function generateDeliveryNoteNumber()
-    {
-        $prefix = 'DN';
-        $year = date('Y');
-        $month = date('m');
-        $lastNote = WholesaleDelivery::where('delivery_note_number', 'like', "{$prefix}{$year}{$month}%")
-                                    ->orderBy('delivery_note_number', 'desc')
-                                    ->first();
-        
-        if ($lastNote) {
-            $lastNumber = intval(substr($lastNote->delivery_note_number, -4));
             $newNumber = $lastNumber + 1;
         } else {
             $newNumber = 1;
