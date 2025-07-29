@@ -1,3 +1,79 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Global font scaling and responsive design */
+html {
+  font-size: 16px; /* Increased base font size */
+  -webkit-text-size-adjust: 100%;
+  -ms-text-size-adjust: 100%;
+}
+
+body {
+  font-size: 1rem; /* 16px base */
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Responsive font scaling */
+@media (max-width: 768px) {
+  html {
+    font-size: 15px;
+  }
+}
+
+@media (max-width: 480px) {
+  html {
+    font-size: 14px;
+  }
+}
+
+/* Prevent zoom on input focus on iOS */
+input, select, textarea {
+  font-size: 16px !important;
+}
+
+/* Ensure proper spacing for mobile */
+* {
+  box-sizing: border-box;
+}
+
+/* Improve touch targets on mobile */
+button, a, [role="button"] {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+/* Better table responsiveness */
+table {
+  font-size: 0.875rem;
+}
+
+/* Improve form element sizing */
+.MuiTextField-root input,
+.MuiTextField-root textarea {
+  font-size: 1rem !important;
+}
+
+/* Better button sizing */
+.MuiButton-root {
+  font-size: 1rem !important;
+  padding: 8px 16px !important;
+}
+
+/* Improve card and paper sizing */
+.MuiCard-root,
+.MuiPaper-root {
+  font-size: 1rem;
+}
+
+/* Better typography scaling */
+.MuiTypography-h1 { font-size: 2rem !important; }
+.MuiTypography-h2 { font-size: 1.75rem !important; }
+.MuiTypography-h3 { font-size: 1.5rem !important; }
+.MuiTypography-h4 { font-size: 1.25rem !important; }
+.MuiTypography-h5 { font-size: 1.125rem !important; }
+.MuiTypography-h6 { font-size: 1rem !important; }
+.MuiTypography-body1 { font-size: 1rem !important; }
+.MuiTypography-body2 { font-size: 0.875rem !important; }

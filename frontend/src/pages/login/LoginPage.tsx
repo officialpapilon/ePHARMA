@@ -10,11 +10,9 @@ import {
   CircularProgress,
   InputAdornment,
   IconButton,
-  IconButton as MuiIconButton,
 } from "@mui/material";
 import Visibility from "@mui/icons-material/Visibility";
 import VisibilityOff from "@mui/icons-material/VisibilityOff";
-import CloseIcon from "@mui/icons-material/Close";
 import { useAuth } from "../../contexts/AuthContext";
 
 const LoginPage: React.FC = () => {
@@ -23,17 +21,8 @@ const LoginPage: React.FC = () => {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [showForgotPassword, setShowForgotPassword] = useState(false);
-  const [forgotPasswordData, setForgotPasswordData] = useState({
-    username: "",
-    phone: "",
-    token: "",
-    newPassword: "",
-    confirmPassword: "",
-  });
-  const [tokenSent, setTokenSent] = useState(false);
   const navigate = useNavigate();
-  const { login, resetPassword } = useAuth();
+  const { login } = useAuth();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -43,60 +32,11 @@ const LoginPage: React.FC = () => {
     try {
       await login(username, password, "1");
       navigate("/");
-    } catch (err: any) {
-      setError(err.message || "Invalid credentials. Please try again.");
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : "Invalid credentials. Please try again.";
+      setError(errorMessage);
       setLoading(false);
     }
-  };
-
-  const handleForgotPassword = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError("");
-    setLoading(true);
-
-    try {
-      if (!tokenSent) {
-        setTokenSent(true);
-        setLoading(false);
-        return;
-      }
-
-      if (
-        forgotPasswordData.newPassword !== forgotPasswordData.confirmPassword
-      ) {
-        throw new Error("Passwords don't match");
-      }
-
-      await resetPassword(
-        forgotPasswordData.username,
-        forgotPasswordData.token,
-        forgotPasswordData.newPassword
-      );
-
-      setShowForgotPassword(false);
-      setTokenSent(false);
-      setForgotPasswordData({
-        username: "",
-        phone: "",
-        token: "",
-        newPassword: "",
-        confirmPassword: "",
-      });
-      setError("");
-      alert(
-        "Password reset successfully! Please login with your new password."
-      );
-    } catch (err: any) {
-      setError(err.message || "Failed to reset password. Please try again.");
-      setLoading(false);
-    }
-  };
-
-  const handleInputChange = (field: string, value: string) => {
-    setForgotPasswordData((prev) => ({
-      ...prev,
-      [field]: value,
-    }));
   };
 
   return (
@@ -190,9 +130,7 @@ const LoginPage: React.FC = () => {
           boxShadow: "0 8px 32px rgba(0, 31, 63, 0.3)",
         }}
       >
-        {!showForgotPassword ? (
-          <>
-            <Box sx={{ textAlign: "center", mb: 2 }}>
+        <Box sx={{ textAlign: "center", mb: 2 }}>
               <Typography
                 variant="h5"
                 sx={{
@@ -361,271 +299,11 @@ const LoginPage: React.FC = () => {
                     },
                   },
                 }}
-                onClick={() => setShowForgotPassword(true)}
+                onClick={() => navigate('/forgot-password')}
               >
                 Forgot password?
               </Typography>
             </form>
-          </>
-        ) : (
-          <>
-            <Box
-              sx={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                mb: 2,
-              }}
-            >
-              <Typography
-                variant="h5"
-                sx={{
-                  fontWeight: 800,
-                  fontSize: "2.0rem",
-                  color: "white",
-                  textShadow: "0 0 8px rgba(0, 255, 255, 0.3)",
-                  letterSpacing: "1px",
-                }}
-              >
-                Reset Password
-              </Typography>
-              <MuiIconButton
-                onClick={() => {
-                  setShowForgotPassword(false);
-                  setTokenSent(false);
-                  setError("");
-                }}
-                sx={{ color: "rgba(255, 255, 255, 0.7)" }}
-              >
-                <CloseIcon />
-              </MuiIconButton>
-            </Box>
-
-            <form onSubmit={handleForgotPassword}>
-              {!tokenSent ? (
-                <>
-                  <TextField
-                    variant="outlined"
-                    fullWidth
-                    margin="normal"
-                    placeholder="Username"
-                    value={forgotPasswordData.username}
-                    onChange={(e) =>
-                      handleInputChange("username", e.target.value)
-                    }
-                    required
-                    sx={{
-                      "& .MuiOutlinedInput-root": {
-                        borderRadius: "12px",
-                        background: "rgba(255, 255, 255, 0.1)",
-                        color: "white",
-                        "& fieldset": {
-                          borderColor: "rgba(255, 255, 255, 0.3)",
-                        },
-                        "&:hover fieldset": {
-                          borderColor: "rgba(0, 255, 255, 0.5)",
-                        },
-                        "&.Mui-focused fieldset": {
-                          borderColor: "rgba(0, 255, 255, 0.8)",
-                          borderWidth: "1px",
-                        },
-                        "& input::placeholder": {
-                          color: "rgba(255, 255, 255, 0.7)",
-                          opacity: 1,
-                        },
-                      },
-                    }}
-                  />
-
-                  <TextField
-                    variant="outlined"
-                    fullWidth
-                    margin="normal"
-                    placeholder="Phone Number"
-                    value={forgotPasswordData.phone}
-                    onChange={(e) => handleInputChange("phone", e.target.value)}
-                    required
-                    sx={{
-                      "& .MuiOutlinedInput-root": {
-                        borderRadius: "12px",
-                        background: "rgba(255, 255, 255, 0.1)",
-                        color: "white",
-                        "& fieldset": {
-                          borderColor: "rgba(255, 255, 255, 0.3)",
-                        },
-                        "&:hover fieldset": {
-                          borderColor: "rgba(0, 255, 255, 0.5)",
-                        },
-                        "&.Mui-focused fieldset": {
-                          borderColor: "rgba(0, 255, 255, 0.8)",
-                          borderWidth: "1px",
-                        },
-                        "& input::placeholder": {
-                          color: "rgba(255, 255, 255, 0.7)",
-                          opacity: 1,
-                        },
-                      },
-                    }}
-                  />
-                </>
-              ) : (
-                <>
-                  <TextField
-                    variant="outlined"
-                    fullWidth
-                    margin="normal"
-                    placeholder="Verification Code"
-                    value={forgotPasswordData.token}
-                    onChange={(e) => handleInputChange("token", e.target.value)}
-                    required
-                    inputProps={{ maxLength: 4 }}
-                    sx={{
-                      "& .MuiOutlinedInput-root": {
-                        borderRadius: "12px",
-                        background: "rgba(255, 255, 255, 0.1)",
-                        color: "white",
-                        "& fieldset": {
-                          borderColor: "rgba(255, 255, 255, 0.3)",
-                        },
-                        "&:hover fieldset": {
-                          borderColor: "rgba(0, 255, 255, 0.5)",
-                        },
-                        "&.Mui-focused fieldset": {
-                          borderColor: "rgba(0, 255, 255, 0.8)",
-                          borderWidth: "1px",
-                        },
-                        "& input::placeholder": {
-                          color: "rgba(255, 255, 255, 0.7)",
-                          opacity: 1,
-                        },
-                      },
-                    }}
-                  />
-
-                  <TextField
-                    type="password"
-                    variant="outlined"
-                    fullWidth
-                    margin="normal"
-                    placeholder="New Password"
-                    value={forgotPasswordData.newPassword}
-                    onChange={(e) =>
-                      handleInputChange("newPassword", e.target.value)
-                    }
-                    required
-                    sx={{
-                      "& .MuiOutlinedInput-root": {
-                        borderRadius: "12px",
-                        background: "rgba(255, 255, 255, 0.1)",
-                        color: "white",
-                        "& fieldset": {
-                          borderColor: "rgba(255, 255, 255, 0.3)",
-                        },
-                        "&:hover fieldset": {
-                          borderColor: "rgba(0, 255, 255, 0.5)",
-                        },
-                        "&.Mui-focused fieldset": {
-                          borderColor: "rgba(0, 255, 255, 0.8)",
-                          borderWidth: "1px",
-                        },
-                        "& input::placeholder": {
-                          color: "rgba(255, 255, 255, 0.7)",
-                          opacity: 1,
-                        },
-                      },
-                    }}
-                  />
-
-                  <TextField
-                    type="password"
-                    variant="outlined"
-                    fullWidth
-                    margin="normal"
-                    placeholder="Confirm New Password"
-                    value={forgotPasswordData.confirmPassword}
-                    onChange={(e) =>
-                      handleInputChange("confirmPassword", e.target.value)
-                    }
-                    required
-                    sx={{
-                      "& .MuiOutlinedInput-root": {
-                        borderRadius: "12px",
-                        background: "rgba(255, 255, 255, 0.1)",
-                        color: "white",
-                        "& fieldset": {
-                          borderColor: "rgba(255, 255, 255, 0.3)",
-                        },
-                        "&:hover fieldset": {
-                          borderColor: "rgba(0, 255, 255, 0.5)",
-                        },
-                        "&.Mui-focused fieldset": {
-                          borderColor: "rgba(0, 255, 255, 0.8)",
-                          borderWidth: "1px",
-                        },
-                        "& input::placeholder": {
-                          color: "rgba(255, 255, 255, 0.7)",
-                          opacity: 1,
-                        },
-                      },
-                    }}
-                  />
-                </>
-              )}
-
-              {error && (
-                <Alert
-                  severity="error"
-                  sx={{
-                    mt: 2,
-                    borderRadius: "12px",
-                    background: "rgba(238, 8, 8, 0.2)",
-                    color: "white",
-                    border: "1px solid rgba(255, 0, 0, 0.3)",
-                  }}
-                >
-                  {error}
-                </Alert>
-              )}
-
-              <Button
-                type="submit"
-                variant="contained"
-                disabled={loading}
-                fullWidth
-                sx={{
-                  mt: 3,
-                  py: 1.5,
-                  borderRadius: "12px",
-                  background:
-                    "linear-gradient(45deg, #00c6c6 0%, #0082c8 100%)",
-                  color: "white",
-                  fontWeight: 500,
-                  fontSize: "1rem",
-                  textTransform: "none",
-                  boxShadow: "0 4px 20px rgba(0, 198, 198, 0.3)",
-                  transition: "all 0.3s ease",
-                  "&:hover": {
-                    background:
-                      "linear-gradient(45deg, #00b4b4 0%, #0072b8 100%)",
-                    boxShadow: "0 6px 24px rgba(0, 198, 198, 0.4)",
-                  },
-                  "&.Mui-disabled": {
-                    background: "rgba(255, 255, 255, 0.1)",
-                    color: "rgba(255, 255, 255, 0.5)",
-                  },
-                }}
-              >
-                {loading ? (
-                  <CircularProgress size={24} sx={{ color: "inherit" }} />
-                ) : tokenSent ? (
-                  "Reset Password"
-                ) : (
-                  "Send Verification Code"
-                )}
-              </Button>
-            </form>
-          </>
-        )}
 
         <Typography
           variant="body2"

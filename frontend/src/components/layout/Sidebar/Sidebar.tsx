@@ -8,7 +8,6 @@ import {
   ListItemText,
   Typography,
   Box,
-  Divider,
   Collapse,
   IconButton,
   useTheme,
@@ -17,7 +16,6 @@ import {
 import {
   ExpandLess,
   ExpandMore,
-  Dashboard,
   Home,
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -128,32 +126,69 @@ const Sidebar: React.FC<SidebarProps> = ({
   };
 
   const drawerContent = (
-    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+    <Box sx={{ 
+      height: '100vh', 
+      display: 'flex', 
+      flexDirection: 'column',
+      overflow: 'hidden'
+    }}>
+      {/* Enhanced Header */}
       <Box
         sx={{
-          p: 2,
-          borderBottom: `1px solid ${theme.palette.divider}`,
-          backgroundColor: alpha(theme.palette.primary.main, 0.05),
+          p: 3,
+          pt: 4,
+          borderBottom: `2px solid ${theme.palette.primary.main}`,
+          backgroundColor: theme.palette.primary.main,
+          color: 'white',
+          height: 120,
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'center',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+          flexShrink: 0,
+          position: 'sticky',
+          top: 0,
+          zIndex: 1,
         }}
       >
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Typography
-            variant="h6"
-            sx={{
-              fontWeight: 600,
-              color: theme.palette.primary.main,
-              fontSize: 18,
-            }}
-          >
-            {title}
-          </Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Box
+              sx={{
+                width: 32,
+                height: 32,
+                borderRadius: '50%',
+                backgroundColor: 'white',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: theme.palette.primary.main,
+                fontWeight: 'bold',
+                fontSize: 16,
+              }}
+            >
+              P
+            </Box>
+            <Typography
+              variant="h6"
+              sx={{
+                fontWeight: 700,
+                color: 'white',
+                fontSize: 20,
+                letterSpacing: 0.5,
+              }}
+            >
+              ePharma
+            </Typography>
+          </Box>
           <IconButton
-            color="primary"
+            color="inherit"
             onClick={() => navigate('/')}
             size="small"
             sx={{
+              backgroundColor: 'rgba(255,255,255,0.1)',
               '&:hover': {
-                backgroundColor: alpha(theme.palette.primary.main, 0.1),
+                backgroundColor: 'rgba(255,255,255,0.2)',
                 transform: 'scale(1.1)',
               },
               transition: 'all 0.2s ease',
@@ -162,9 +197,37 @@ const Sidebar: React.FC<SidebarProps> = ({
             <Home />
           </IconButton>
         </Box>
+        
+        <Typography
+          variant="body2"
+          sx={{
+            color: 'rgba(255,255,255,0.8)',
+            fontSize: 12,
+            fontWeight: 500,
+            textTransform: 'uppercase',
+            letterSpacing: 1,
+          }}
+        >
+          {title}
+        </Typography>
       </Box>
 
-      <Box sx={{ flex: 1, overflow: 'auto', py: 1 }}>
+      <Box sx={{ 
+        flex: 1, 
+        overflow: 'auto', 
+        py: 1, 
+        height: 'calc(100vh - 120px)',
+        '&::-webkit-scrollbar': {
+          width: '6px',
+        },
+        '&::-webkit-scrollbar-track': {
+          background: 'transparent',
+        },
+        '&::-webkit-scrollbar-thumb': {
+          background: theme.palette.divider,
+          borderRadius: '3px',
+        },
+      }}>
         <List>
           {navItems.map(item => renderNavItem(item))}
         </List>
@@ -185,9 +248,18 @@ const Sidebar: React.FC<SidebarProps> = ({
           boxSizing: 'border-box',
           backgroundColor: theme.palette.background.paper,
           borderRight: `1px solid ${theme.palette.divider}`,
+          position: 'fixed',
+          height: '100vh',
+          top: 0,
+          left: 0,
+          zIndex: theme.zIndex.drawer,
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
+          paddingTop: 'env(safe-area-inset-top, 0px)',
           ...(variant === 'permanent' && {
-            position: 'relative',
-            height: '100%',
+            position: 'fixed',
+            height: '100vh',
           }),
         },
       }}

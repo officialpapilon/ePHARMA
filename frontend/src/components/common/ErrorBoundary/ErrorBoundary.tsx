@@ -6,7 +6,7 @@ import {
   Paper,
   Container,
 } from '@mui/material';
-import { ErrorOutline, Refresh } from '@mui/icons-material';
+import { ErrorOutline, Refresh, Home } from '@mui/icons-material';
 
 interface Props {
   children: ReactNode;
@@ -37,6 +37,10 @@ class ErrorBoundary extends Component<Props, State> {
     window.location.reload();
   };
 
+  handleGoHome = () => {
+    window.location.href = '/';
+  };
+
   render() {
     if (this.state.hasError) {
       return (
@@ -61,48 +65,35 @@ class ErrorBoundary extends Component<Props, State> {
                 Oops! Something went wrong
               </Typography>
               <Typography variant="body1" color="textSecondary" sx={{ mb: 3 }}>
-                We're sorry, but something unexpected happened. Please try refreshing the page.
+                We're sorry, but something unexpected happened. Please try refreshing the page or contact our support team if the issue persists.
               </Typography>
             </Box>
 
-            <Button
-              variant="contained"
-              startIcon={<Refresh />}
-              onClick={this.handleReload}
-              size="large"
-              sx={{ mb: 2 }}
-            >
-              Refresh Page
-            </Button>
-
-            {process.env.NODE_ENV === 'development' && this.state.error && (
-              <Box
-                sx={{
-                  mt: 3,
-                  p: 2,
-                  backgroundColor: 'grey.100',
-                  borderRadius: 1,
-                  textAlign: 'left',
-                }}
+            <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center', flexWrap: 'wrap' }}>
+              <Button
+                variant="contained"
+                startIcon={<Refresh />}
+                onClick={this.handleReload}
+                size="large"
               >
-                <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
-                  Error Details (Development Mode):
-                </Typography>
-                <Typography
-                  variant="body2"
-                  component="pre"
-                  sx={{
-                    fontSize: '0.75rem',
-                    fontFamily: 'monospace',
-                    whiteSpace: 'pre-wrap',
-                    wordBreak: 'break-word',
-                  }}
-                >
-                  {this.state.error.toString()}
-                  {this.state.errorInfo?.componentStack}
-                </Typography>
-              </Box>
-            )}
+                Refresh Page
+              </Button>
+              
+              <Button
+                variant="outlined"
+                startIcon={<Home />}
+                onClick={this.handleGoHome}
+                size="large"
+              >
+                Go Home
+              </Button>
+            </Box>
+
+            <Box sx={{ mt: 4, p: 2, backgroundColor: 'grey.50', borderRadius: 2 }}>
+              <Typography variant="body2" color="textSecondary">
+                If this problem continues, please contact our support team with a description of what you were doing when this error occurred.
+              </Typography>
+            </Box>
           </Paper>
         </Container>
       );

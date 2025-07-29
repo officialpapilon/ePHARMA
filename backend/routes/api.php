@@ -39,6 +39,11 @@ use App\Models\Branch;
 
 Route::post('/login', [LoginController::class, 'login'])->middleware('guest:sanctum');
 
+// Forgot Password Routes (no authentication required)
+Route::post('/forgot-password', [LoginController::class, 'forgotPassword']);
+Route::post('/reset-password', [LoginController::class, 'resetPassword']);
+Route::post('/verify-reset-token', [LoginController::class, 'verifyResetToken']);
+
 Route::middleware('auth')->group(function () {
     
 

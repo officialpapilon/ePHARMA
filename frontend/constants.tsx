@@ -2,7 +2,7 @@
 export const APP_NAME = "e-PHARMA";
 
 
-export const API_BASE_URL = 'http://192.168.100.101:8000'; 
+export const API_BASE_URL = 'http://192.168.1.3:8000'; 
 export const numberFormat = (number: { toString: () => string }) => {
   const parts = number.toString().split(".");
   parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ",");

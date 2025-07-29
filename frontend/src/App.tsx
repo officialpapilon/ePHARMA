@@ -20,6 +20,7 @@ const queryClient = new QueryClient({
 
 // Lazy load all page components
 const LoginPage = React.lazy(() => import('./pages/login/LoginPage'));
+const ForgotPasswordPage = React.lazy(() => import('./pages/login/ForgotPasswordPage'));
 const Home = React.lazy(() => import("./components/Home"));
 const CashierLayout = React.lazy(() => import("./pages/cashier/CashierLayout"));
 const CashierDashboard = React.lazy(() => import("./pages/cashier/CashierDashboard"));
@@ -109,6 +110,7 @@ const App: React.FC = () => (
                 <Routes>
                   {/* Public Routes */}
                   <Route path="/login" element={<LoginPage />} />
+                  <Route path="/forgot-password" element={<ForgotPasswordPage />} />
 
                   {/* Protected Routes */}
                   <Route path="/" element={<PrivateRoute element={<Home />} />} />

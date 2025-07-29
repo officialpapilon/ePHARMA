@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use App\Models\User;
 use App\Models\Branch;
 use Laravel\Sanctum\PersonalAccessToken;
@@ -95,6 +97,188 @@ class LoginController extends Controller
             return response()->json([
                 'message' => 'An error occurred during login',
                 'error' => config('app.debug') ? $e->getMessage() : null,
+            ], 500);
+        }
+    }
+
+    /**
+     * Request password reset
+     */
+    public function forgotPassword(Request $request)
+    {
+        try {
+            $validatedData = $request->validate([
+                'username' => 'required|string',
+                'phone_number' => 'required|string',
+            ], [
+                'username.required' => 'Username is required.',
+                'phone_number.required' => 'Phone number is required.',
+            ]);
+
+            // Find user by username and phone number
+            $user = User::where('username', $request->username)
+                       ->where('phone_number', $request->phone_number)
+                       ->first();
+
+            if (!$user) {
+                return response()->json([
+                    'message' => 'No user found with the provided username and phone number.'
+                ], 404);
+            }
+
+            // Generate reset token
+            $resetToken = Str::random(64);
+            $expiresAt = now()->addMinutes(30); // Token expires in 30 minutes
+
+            // Store reset token in database
+            DB::table('password_reset_tokens')->updateOrInsert(
+                ['email' => $user->email],
+                [
+                    'token' => $resetToken,
+                    'created_at' => now(),
+                    'expires_at' => $expiresAt,
+                ]
+            );
+
+            // In a real application, you would send SMS here
+            // For now, we'll return the token for testing
+            return response()->json([
+                'message' => 'Password reset verification code sent to your phone number.',
+                'reset_token' => $resetToken, // Remove this in production
+                'expires_at' => $expiresAt,
+            ], 200);
+
+        } catch (ValidationException $e) {
+            return response()->json([
+                'message' => 'Validation failed',
+                'errors' => $e->errors(),
+            ], 422);
+        } catch (\Exception $e) {
+            Log::error('Forgot password error', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            return response()->json([
+                'message' => 'An error occurred while processing your request.'
+            ], 500);
+        }
+    }
+
+    /**
+     * Verify reset token and reset password
+     */
+    public function resetPassword(Request $request)
+    {
+        try {
+            $validatedData = $request->validate([
+                'reset_token' => 'required|string',
+                'new_password' => 'required|string|min:8',
+                'confirm_password' => 'required|same:new_password',
+            ], [
+                'reset_token.required' => 'Reset token is required.',
+                'new_password.required' => 'New password is required.',
+                'new_password.min' => 'Password must be at least 8 characters.',
+                'confirm_password.required' => 'Password confirmation is required.',
+                'confirm_password.same' => 'Password confirmation does not match.',
+            ]);
+
+            // Find the reset token
+            $resetRecord = DB::table('password_reset_tokens')
+                ->where('token', $request->reset_token)
+                ->where('expires_at', '>', now())
+                ->first();
+
+            if (!$resetRecord) {
+                return response()->json([
+                    'message' => 'Invalid or expired reset token.'
+                ], 400);
+            }
+
+            // Find user by email
+            $user = User::where('email', $resetRecord->email)->first();
+
+            if (!$user) {
+                return response()->json([
+                    'message' => 'User not found.'
+                ], 404);
+            }
+
+            // Update password
+            $user->update([
+                'password' => Hash::make($request->new_password)
+            ]);
+
+            // Delete all user tokens to force re-login
+            $user->tokens()->delete();
+
+            // Delete the reset token
+            DB::table('password_reset_tokens')
+                ->where('token', $request->reset_token)
+                ->delete();
+
+            return response()->json([
+                'message' => 'Password reset successfully. Please login with your new password.'
+            ], 200);
+
+        } catch (ValidationException $e) {
+            return response()->json([
+                'message' => 'Validation failed',
+                'errors' => $e->errors(),
+            ], 422);
+        } catch (\Exception $e) {
+            Log::error('Reset password error', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            return response()->json([
+                'message' => 'An error occurred while resetting your password.'
+            ], 500);
+        }
+    }
+
+    /**
+     * Verify reset token (for frontend validation)
+     */
+    public function verifyResetToken(Request $request)
+    {
+        try {
+            $validatedData = $request->validate([
+                'reset_token' => 'required|string',
+            ]);
+
+            $resetRecord = DB::table('password_reset_tokens')
+                ->where('token', $request->reset_token)
+                ->where('expires_at', '>', now())
+                ->first();
+
+            if (!$resetRecord) {
+                return response()->json([
+                    'valid' => false,
+                    'message' => 'Invalid or expired reset token.'
+                ], 400);
+            }
+
+            return response()->json([
+                'valid' => true,
+                'message' => 'Reset token is valid.',
+                'expires_at' => $resetRecord->expires_at,
+            ], 200);
+
+        } catch (ValidationException $e) {
+            return response()->json([
+                'message' => 'Validation failed',
+                'errors' => $e->errors(),
+            ], 422);
+        } catch (\Exception $e) {
+            Log::error('Verify reset token error', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            return response()->json([
+                'message' => 'An error occurred while verifying the reset token.'
             ], 500);
         }
     }

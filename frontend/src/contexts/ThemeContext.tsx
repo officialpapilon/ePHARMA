@@ -102,16 +102,17 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       },
       typography: {
         fontFamily: '"Inter", "Roboto", "Helvetica", "Arial", sans-serif',
-        h1: { fontWeight: 700, fontSize: '2.25rem', lineHeight: 1.2 },
-        h2: { fontWeight: 600, fontSize: '1.875rem', lineHeight: 1.3 },
+        h1: { fontWeight: 700, fontSize: '2rem', lineHeight: 1.2 },
+        h2: { fontWeight: 600, fontSize: '1.75rem', lineHeight: 1.3 },
         h3: { fontWeight: 600, fontSize: '1.5rem', lineHeight: 1.4 },
         h4: { fontWeight: 600, fontSize: '1.25rem', lineHeight: 1.4 },
         h5: { fontWeight: 600, fontSize: '1.125rem', lineHeight: 1.4 },
         h6: { fontWeight: 600, fontSize: '1rem', lineHeight: 1.4 },
         body1: { fontSize: '1rem', lineHeight: 1.6 },
         body2: { fontSize: '0.875rem', lineHeight: 1.5 },
-        button: { fontWeight: 600, textTransform: 'none' },
+        button: { fontWeight: 600, textTransform: 'none', fontSize: '1rem' },
         caption: { fontSize: '0.75rem', lineHeight: 1.4 },
+        overline: { fontSize: '0.75rem', lineHeight: 1.4 },
       },
       shape: {
         borderRadius: 12,
@@ -121,6 +122,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           styleOverrides: {
             root: {
               borderRadius: 12,
+              fontSize: '1rem',
             },
           },
         },
@@ -131,6 +133,9 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               fontWeight: 600,
               textTransform: 'none',
               boxShadow: 'none',
+              fontSize: '1rem',
+              padding: '8px 16px',
+              minHeight: '44px',
               '&:hover': {
                 boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
               },
@@ -142,14 +147,20 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             root: {
               borderRadius: 12,
               boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
+              fontSize: '1rem',
             },
           },
         },
         MuiTextField: {
           styleOverrides: {
             root: {
+              fontSize: '1rem',
               '& .MuiOutlinedInput-root': {
                 borderRadius: 8,
+                fontSize: '1rem',
+              },
+              '& .MuiInputLabel-root': {
+                fontSize: '1rem',
               },
             },
           },
@@ -158,6 +169,32 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           styleOverrides: {
             root: {
               borderRadius: 6,
+              fontSize: '0.875rem',
+            },
+          },
+        },
+        MuiTableCell: {
+          styleOverrides: {
+            root: {
+              fontSize: '0.875rem',
+              padding: '8px 12px',
+            },
+          },
+        },
+        MuiTableHead: {
+          styleOverrides: {
+            root: {
+              '& .MuiTableCell-root': {
+                fontSize: '0.875rem',
+                fontWeight: 600,
+              },
+            },
+          },
+        },
+        MuiTypography: {
+          styleOverrides: {
+            root: {
+              fontSize: 'inherit',
             },
           },
         },

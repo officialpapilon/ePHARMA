@@ -79,7 +79,7 @@ const UploadExcelDataProvider: React.FC<UploadExcelDataProviderProps> = ({ isOpe
 
       for (const medicine of medicinesData) {
         const response = await axios.post(
-          `${API_BASE_URL}api/medicines`,
+          `${API_BASE_URL}/api/medicines`,
           {
             ...medicine,
             product_price: parseFloat(medicine.product_price) || 0,
