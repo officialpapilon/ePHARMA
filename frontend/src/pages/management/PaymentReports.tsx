@@ -1,26 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Download,
   Search,
-  Filter,
   AlertCircle,
   X,
-  ChevronLeft,
-  ChevronRight,
   RefreshCw,
   FileSpreadsheet,
-  BarChart3,
   TrendingUp,
-  TrendingDown,
   DollarSign,
   CreditCard,
-  Users,
-  Calendar,
-  Eye,
   Clock
 } from 'lucide-react';
 import { useTheme } from '@mui/material';
-import { Bar, Line, Doughnut } from 'react-chartjs-2';
+import { Line, Doughnut, Bar } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -35,7 +26,7 @@ import {
 } from 'chart.js';
 import { API_BASE_URL } from '../../../constants';
 import DataTable from '../../components/common/DataTable/DataTable';
-import { TableColumn } from '../../components/common/DataTable/DataTable';
+import { TableColumn } from '../../types';
 import LoadingSpinner from '../../components/common/LoadingSpinner/LoadingSpinner';
 
 ChartJS.register(
@@ -51,22 +42,25 @@ ChartJS.register(
 );
 
 interface Payment {
-  id: number;
-  cart_id: number;
-  customer_id: number;
-  total_amount: number;
+  id: number | string;
+  dispense_id: string;
+  customer_id: number | string;
+  total_amount: number | string;
   payment_method: string;
   status: string;
   approved_at: string | null;
   created_at: string;
   updated_at: string;
+  transaction_type?: string;
   customer?: {
     name: string;
     phone: string;
-  };
+  } | null;
   cart?: {
-    items: any[];
-  };
+    items: unknown[];
+  } | null;
+  patient_name?: string;
+  patient_phone?: string;
 }
 
 interface PaymentSummary {
@@ -80,28 +74,32 @@ interface PaymentSummary {
 
 interface RevenueAnalytics {
   revenue_trends: Array<{
-    date: string;
+    period: string;
     revenue: number;
-    sales_count: number;
+    transactions: number;
   }>;
   payment_method_breakdown: Array<{
-    payment_method: string;
+    approved_payment_method: string;
     total_amount: number;
     count: number;
   }>;
   top_customers: Array<{
-    customer_id: number;
+    Patient_ID: string;
     total_spent: number;
     transaction_count: number;
     customer?: {
-      name: string;
-    };
+      id: number;
+      first_name: string;
+      last_name: string;
+      phone: string;
+      name?: string;
+    } | null;
   }>;
   summary: {
     total_revenue: number;
     total_transactions: number;
     average_transaction_value: number;
-    peak_period: any;
+    peak_period: unknown;
     growth_rate: number;
   };
 }
@@ -134,7 +132,7 @@ const PaymentReports: React.FC = () => {
   useEffect(() => {
     fetchPaymentData();
     fetchRevenueAnalytics();
-  }, [currentPage, sortBy, sortOrder, analyticsPeriod, startDate, endDate]);
+  }, [currentPage, sortBy, sortOrder, analyticsPeriod, startDate, endDate, selectedStatus, selectedPaymentMethod]);
 
   useEffect(() => {
     filterPayments();
@@ -173,13 +171,29 @@ const PaymentReports: React.FC = () => {
       }
 
       const result = await response.json();
+      console.log('Payment data response:', result); // Debug log
+      
       if (result.success) {
-        setPayments(result.data);
+        // Transform the data to match our interface
+        const transformedData = result.data.map((payment: any) => ({
+          ...payment,
+          total_amount: typeof payment.total_amount === 'string' ? parseFloat(payment.total_amount) : payment.total_amount,
+          id: payment.id,
+          // Use backend-provided patient_name and patient_phone directly
+          patient_name: payment.patient_name || 'Unknown Customer',
+          patient_phone: payment.patient_phone || 'N/A',
+          // Keep existing customer object for backward compatibility
+          customer: payment.customer || null
+        }));
+        
+        setPayments(transformedData);
+        setFilteredPayments(transformedData); // Set filtered data initially
         setSummary(result.summary);
-        setTotalItems(result.meta.total);
-        setTotalPages(result.meta.last_page);
+        setTotalItems(result.meta?.total || transformedData.length);
+        setTotalPages(result.meta?.last_page || 1);
       } else {
         setPayments([]);
+        setFilteredPayments([]);
         setSummary(null);
       }
     } catch (err: any) {
@@ -228,9 +242,10 @@ const PaymentReports: React.FC = () => {
 
     if (searchTerm) {
       filtered = filtered.filter(payment =>
-        payment.customer?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        payment.customer?.phone?.includes(searchTerm) ||
-        payment.id.toString().includes(searchTerm)
+        payment.patient_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        payment.patient_phone?.includes(searchTerm) ||
+        payment.dispense_id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        payment.transaction_type?.toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
 
@@ -239,14 +254,14 @@ const PaymentReports: React.FC = () => {
     }
 
     if (selectedPaymentMethod) {
-      filtered = filtered.filter(payment => payment.payment_method === selectedPaymentMethod);
+      filtered = filtered.filter(payment => payment.payment_method?.toLowerCase() === selectedPaymentMethod.toLowerCase());
     }
 
     if (startDate && endDate) {
       filtered = filtered.filter(payment => {
-        const paymentDate = new Date(payment.created_at);
+        const paymentDate = new Date(payment.approved_at || payment.created_at);
         const start = new Date(startDate);
-        const end = new Date(endDate);
+        const end = new Date(endDate + 'T23:59:59'); // Include end of day
         return paymentDate >= start && paymentDate <= end;
       });
     }
@@ -257,11 +272,12 @@ const PaymentReports: React.FC = () => {
   const handleExportExcel = () => {
     const exportData = filteredPayments.map(payment => ({
       'Payment ID': payment.id,
-      'Customer Name': payment.customer?.name || 'Unknown',
-      'Customer Phone': payment.customer?.phone || 'N/A',
-      'Total Amount': payment.total_amount,
-      'Payment Method': payment.payment_method,
-      'Status': payment.status,
+      'Transaction Type': payment.transaction_type || 'complex_dispensing',
+      'Customer Name': payment.patient_name || payment.customer?.name || 'Passover Customer',
+      'Customer Phone': payment.patient_phone || payment.customer?.phone || 'N/A',
+      'Total Amount': formatCurrency(payment.total_amount),
+      'Payment Method': payment.payment_method?.toUpperCase() || 'CASH',
+      'Status': getStatusText(payment.status),
       'Date': new Date(payment.created_at).toLocaleDateString(),
       'Approved Date': payment.approved_at ? new Date(payment.approved_at).toLocaleDateString() : 'N/A'
     }));
@@ -285,8 +301,9 @@ const PaymentReports: React.FC = () => {
     document.body.removeChild(link);
   };
 
-  const formatCurrency = (amount: number) => {
-    return `Tsh ${amount.toLocaleString()}`;
+  const formatCurrency = (amount: number | string) => {
+    const num = typeof amount === 'string' ? parseFloat(amount) : amount;
+    return `Tsh ${num.toLocaleString()}`;
   };
 
   const formatNumber = (num: number) => {
@@ -310,25 +327,54 @@ const PaymentReports: React.FC = () => {
   // DataTable columns
   const columns: TableColumn[] = [
     {
-      key: 'id',
-      header: 'Payment ID',
+      key: 'transaction_type',
+      header: 'Type',
       sortable: true,
-      width: '10%'
+      width: '15%',
+      render: (row: Payment) => {
+        if (!row) return '-';
+        const type = row.transaction_type || 'complex_dispensing';
+        const typeLabels: Record<string, string> = {
+          'complex_dispensing': 'Complex Dispense',
+          'simple_dispensing': 'Simple Dispense',
+          'wholesale': 'Wholesale'
+        };
+        const typeColors: Record<string, string> = {
+          'complex_dispensing': theme.palette.primary.main,
+          'simple_dispensing': theme.palette.secondary.main,
+          'wholesale': theme.palette.success.main
+        };
+        return (
+          <span style={{
+            padding: '4px 8px',
+            borderRadius: 12,
+            fontSize: 11,
+            fontWeight: 500,
+            background: typeColors[type] + '20',
+            color: typeColors[type]
+          }}>
+            {typeLabels[type] || type}
+          </span>
+        );
+      }
     },
     {
-      key: 'customer_name',
-      header: 'Customer',
-      sortable: true,
-      width: '20%',
-      render: (row: any) => {
+      key: 'customer_info',
+      header: 'Customer Info',
+      sortable: false,
+      width: '25%',
+      render: (row: Payment) => {
         if (!row) return '-';
+        // Use the backend-provided patient_name and patient_phone
+        const customerName = row.patient_name || 'Unknown Customer';
+        const customerPhone = row.patient_phone || 'N/A';
         return (
           <div>
             <div style={{ fontWeight: 600, color: theme.palette.text.primary }}>
-              {row.customer?.name || 'Unknown'}
+              {customerName}
             </div>
             <div style={{ fontSize: 12, color: theme.palette.text.secondary }}>
-              {row.customer?.phone || 'N/A'}
+              {customerPhone}
             </div>
           </div>
         );
@@ -339,7 +385,7 @@ const PaymentReports: React.FC = () => {
       header: 'Amount',
       sortable: true,
       width: '15%',
-      render: (row: any) => {
+      render: (row: Payment) => {
         if (!row) return '-';
         return (
           <span style={{ fontWeight: 600, color: theme.palette.success.main }}>
@@ -353,18 +399,28 @@ const PaymentReports: React.FC = () => {
       header: 'Payment Method',
       sortable: true,
       width: '15%',
-      render: (row: any) => {
+      render: (row: Payment) => {
         if (!row) return '-';
+        const methodColors: Record<string, string> = {
+          'cash': theme.palette.success.main,
+          'card': theme.palette.primary.main,
+          'mobile': theme.palette.secondary.main,
+          'bank_transfer': theme.palette.info.main,
+          'cheque': theme.palette.warning.main,
+          'credit_card': theme.palette.primary.main,
+          'mobile_money': theme.palette.secondary.main
+        };
+        const color = methodColors[row.payment_method?.toLowerCase()] || theme.palette.grey[500];
         return (
           <span style={{
             padding: '4px 8px',
             borderRadius: 12,
             fontSize: 12,
             fontWeight: 500,
-            background: theme.palette.primary.light,
-            color: theme.palette.primary.main
+            background: color + '20',
+            color: color
           }}>
-            {row.payment_method}
+            {row.payment_method?.toUpperCase() || 'CASH'}
           </span>
         );
       }
@@ -374,7 +430,7 @@ const PaymentReports: React.FC = () => {
       header: 'Status',
       sortable: true,
       width: '12%',
-      render: (row: any) => {
+      render: (row: Payment) => {
         if (!row) return '-';
         return (
           <span style={{
@@ -391,23 +447,30 @@ const PaymentReports: React.FC = () => {
       }
     },
     {
-      key: 'created_at',
-      header: 'Date',
-      sortable: true,
-      width: '15%',
-      render: (row: any) => {
-        if (!row) return '-';
-        return new Date(row.created_at).toLocaleDateString();
-      }
-    },
-    {
       key: 'approved_at',
-      header: 'Approved',
+      header: 'Date/Approved',
       sortable: true,
-      width: '13%',
-      render: (row: any) => {
+      width: '18%',
+      render: (row: Payment) => {
         if (!row) return '-';
-        return row.approved_at ? new Date(row.approved_at).toLocaleDateString() : '-';
+        const date = row.approved_at || row.created_at;
+        if (!date) {
+          return (
+            <span style={{ color: theme.palette.text.secondary, fontSize: 12 }}>
+              Pending
+            </span>
+          );
+        }
+        return (
+          <div>
+            <div style={{ fontWeight: 500, color: theme.palette.text.primary }}>
+              {new Date(date).toLocaleDateString()}
+            </div>
+            <div style={{ fontSize: 11, color: theme.palette.text.secondary }}>
+              {new Date(date).toLocaleTimeString()}
+            </div>
+          </div>
+        );
       }
     }
   ];
@@ -415,8 +478,8 @@ const PaymentReports: React.FC = () => {
   // Chart data
   const revenueChartData = {
     labels: revenueAnalytics?.revenue_trends.map(item => {
-      const date = new Date(item.date);
-      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      const date = new Date(item.period + '-01'); // Add day for parsing
+      return date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
     }) || [],
     datasets: [
       {
@@ -427,8 +490,8 @@ const PaymentReports: React.FC = () => {
         tension: 0.4,
       },
       {
-        label: 'Sales Count',
-        data: revenueAnalytics?.revenue_trends.map(item => item.sales_count) || [],
+        label: 'Transactions',
+        data: revenueAnalytics?.revenue_trends.map(item => item.transactions) || [],
         borderColor: theme.palette.secondary.main,
         backgroundColor: theme.palette.secondary.light,
         tension: 0.4,
@@ -438,7 +501,7 @@ const PaymentReports: React.FC = () => {
   };
 
   const paymentMethodChartData = {
-    labels: revenueAnalytics?.payment_method_breakdown.map(item => item.payment_method) || [],
+    labels: revenueAnalytics?.payment_method_breakdown.map(item => item.approved_payment_method?.toUpperCase()) || [],
     datasets: [
       {
         data: revenueAnalytics?.payment_method_breakdown.map(item => item.total_amount) || [],
@@ -741,7 +804,7 @@ const PaymentReports: React.FC = () => {
                   </select>
                 </div>
                 <div style={{ height: 300 }}>
-                  <Line data={revenueChartData} options={chartOptions} />
+                  <Bar data={revenueChartData} options={chartOptions} />
                 </div>
               </div>
 
@@ -793,7 +856,7 @@ const PaymentReports: React.FC = () => {
               }}>
                 {revenueAnalytics.top_customers.slice(0, 6).map((customer, index) => (
                   <div
-                    key={customer.customer_id}
+                    key={customer.Patient_ID}
                     style={{
                       padding: 16,
                       borderRadius: 8,
@@ -813,7 +876,9 @@ const PaymentReports: React.FC = () => {
                           color: theme.palette.text.primary,
                           margin: '0 0 4px 0'
                         }}>
-                          {customer.customer?.name || `Customer ${customer.customer_id}`}
+                          {customer.customer?.first_name && customer.customer?.last_name 
+                            ? `${customer.customer.first_name} ${customer.customer.last_name}`
+                            : customer.customer?.name || `Customer ${customer.Patient_ID}`}
                         </p>
                         <p style={{
                           fontSize: 12,
@@ -848,60 +913,56 @@ const PaymentReports: React.FC = () => {
         padding: 20,
         borderRadius: 12,
         boxShadow: theme.shadows[1],
-        border: `1px solid ${theme.palette.divider}`,
-        marginBottom: 24
+        border: `1px solid ${theme.palette.divider}`
       }}>
+        <h3 style={{
+          fontSize: 18,
+          fontWeight: 600,
+          color: theme.palette.text.primary,
+          marginBottom: 16
+        }}>
+          Filters
+        </h3>
+        
         <div style={{
           display: 'grid',
           gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-          gap: 16
+          gap: 16,
+          marginBottom: 20
         }}>
           {/* Search */}
           <div>
             <label style={{
               display: 'block',
-              fontSize: 12,
+              fontSize: 14,
               fontWeight: 500,
-              color: theme.palette.text.secondary,
+              color: theme.palette.text.primary,
               marginBottom: 8
             }}>
-              Search Payments
+              Search
             </label>
-            <div style={{ position: 'relative' }}>
-              <Search style={{
-                position: 'absolute',
-                left: 12,
-                top: '50%',
-                transform: 'translateY(-50%)',
-                color: theme.palette.text.secondary,
-                width: 16,
-                height: 16
-              }} />
-              <input
-                type="text"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Search by customer name, phone, or ID..."
-                style={{
-                  width: '100%',
-                  padding: '8px 12px 8px 36px',
-                  border: `1px solid ${theme.palette.divider}`,
-                  borderRadius: 8,
-                  fontSize: 14,
-                  background: theme.palette.background.default,
-                  color: theme.palette.text.primary
-                }}
-              />
-            </div>
+            <input
+              type="text"
+              placeholder="Search payments..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                border: `1px solid ${theme.palette.divider}`,
+                borderRadius: 6,
+                fontSize: 14
+              }}
+            />
           </div>
 
           {/* Status Filter */}
           <div>
             <label style={{
               display: 'block',
-              fontSize: 12,
+              fontSize: 14,
               fontWeight: 500,
-              color: theme.palette.text.secondary,
+              color: theme.palette.text.primary,
               marginBottom: 8
             }}>
               Status
@@ -913,16 +974,14 @@ const PaymentReports: React.FC = () => {
                 width: '100%',
                 padding: '8px 12px',
                 border: `1px solid ${theme.palette.divider}`,
-                borderRadius: 8,
-                fontSize: 14,
-                background: theme.palette.background.default,
-                color: theme.palette.text.primary
+                borderRadius: 6,
+                fontSize: 14
               }}
             >
               <option value="">All Status</option>
-              <option value="approved">Approved</option>
-              <option value="pending">Pending</option>
-              <option value="rejected">Rejected</option>
+              <option value="Paid">Paid</option>
+              <option value="Pending">Pending</option>
+              <option value="Rejected">Rejected</option>
             </select>
           </div>
 
@@ -930,9 +989,9 @@ const PaymentReports: React.FC = () => {
           <div>
             <label style={{
               display: 'block',
-              fontSize: 12,
+              fontSize: 14,
               fontWeight: 500,
-              color: theme.palette.text.secondary,
+              color: theme.palette.text.primary,
               marginBottom: 8
             }}>
               Payment Method
@@ -944,26 +1003,24 @@ const PaymentReports: React.FC = () => {
                 width: '100%',
                 padding: '8px 12px',
                 border: `1px solid ${theme.palette.divider}`,
-                borderRadius: 8,
-                fontSize: 14,
-                background: theme.palette.background.default,
-                color: theme.palette.text.primary
+                borderRadius: 6,
+                fontSize: 14
               }}
             >
               <option value="">All Methods</option>
-              {summary?.payment_methods.map(method => (
-                <option key={method} value={method}>{method}</option>
-              ))}
+              <option value="cash">Cash</option>
+              <option value="mobile">Mobile Money</option>
+              <option value="card">Card</option>
             </select>
           </div>
 
-          {/* Date Range */}
+          {/* Start Date */}
           <div>
             <label style={{
               display: 'block',
-              fontSize: 12,
+              fontSize: 14,
               fontWeight: 500,
-              color: theme.palette.text.secondary,
+              color: theme.palette.text.primary,
               marginBottom: 8
             }}>
               Start Date
@@ -976,20 +1033,19 @@ const PaymentReports: React.FC = () => {
                 width: '100%',
                 padding: '8px 12px',
                 border: `1px solid ${theme.palette.divider}`,
-                borderRadius: 8,
-                fontSize: 14,
-                background: theme.palette.background.default,
-                color: theme.palette.text.primary
+                borderRadius: 6,
+                fontSize: 14
               }}
             />
           </div>
 
+          {/* End Date */}
           <div>
             <label style={{
               display: 'block',
-              fontSize: 12,
+              fontSize: 14,
               fontWeight: 500,
-              color: theme.palette.text.secondary,
+              color: theme.palette.text.primary,
               marginBottom: 8
             }}>
               End Date
@@ -1002,119 +1058,112 @@ const PaymentReports: React.FC = () => {
                 width: '100%',
                 padding: '8px 12px',
                 border: `1px solid ${theme.palette.divider}`,
-                borderRadius: 8,
-                fontSize: 14,
-                background: theme.palette.background.default,
-                color: theme.palette.text.primary
+                borderRadius: 6,
+                fontSize: 14
               }}
             />
           </div>
+        </div>
 
-          {/* Clear Filters */}
-          <div style={{ display: 'flex', alignItems: 'end' }}>
+        {/* Clear Filters Button */}
+        <button
+          onClick={() => {
+            setSearchTerm('');
+            setSelectedStatus('');
+            setSelectedPaymentMethod('');
+            setStartDate(new Date().toISOString().split('T')[0]);
+            setEndDate(new Date().toISOString().split('T')[0]);
+          }}
+          style={{
+            padding: '8px 16px',
+            background: theme.palette.grey[100],
+            border: `1px solid ${theme.palette.divider}`,
+            borderRadius: 6,
+            fontSize: 14,
+            cursor: 'pointer',
+            color: theme.palette.text.primary
+          }}
+        >
+          Clear Filters
+        </button>
+      </div>
+
+      {/* DataTable */}
+      <div style={{
+        background: theme.palette.background.paper,
+        padding: 20,
+        borderRadius: 12,
+        boxShadow: theme.shadows[1],
+        border: `1px solid ${theme.palette.divider}`
+      }}>
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: 20
+        }}>
+          <h3 style={{
+            fontSize: 18,
+            fontWeight: 600,
+            color: theme.palette.text.primary,
+            margin: 0
+          }}>
+            Payment Records
+          </h3>
+          
+          <div style={{ display: 'flex', gap: 12 }}>
             <button
-              onClick={() => {
-                setSearchTerm('');
-                setSelectedStatus('');
-                setSelectedPaymentMethod('');
-                setStartDate('');
-                setEndDate('');
-              }}
+              onClick={handleExportExcel}
               style={{
                 padding: '8px 16px',
-                background: theme.palette.grey[500],
-                color: theme.palette.grey[100],
+                background: theme.palette.success.main,
+                color: 'white',
                 border: 'none',
-                borderRadius: 8,
+                borderRadius: 6,
+                fontSize: 14,
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
                 gap: 8
               }}
             >
-              <X style={{ width: 16, height: 16 }} />
-              Clear Filters
+              <FileSpreadsheet size={16} />
+              Export Excel
             </button>
           </div>
         </div>
-      </div>
 
-      {/* Payments Table */}
-      <div style={{
-        background: theme.palette.background.paper,
-        borderRadius: 16,
-        boxShadow: theme.shadows[1],
-        border: `1px solid ${theme.palette.divider}`,
-        overflow: 'hidden'
-      }}>
-        <DataTable
-          columns={columns}
-          data={filteredPayments}
-          loading={loading}
-          emptyMessage="No payments found. Try adjusting your filters."
-        />
-      </div>
-
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginTop: 24,
-          padding: 16,
-          background: theme.palette.background.paper,
-          borderRadius: 12,
-          boxShadow: theme.shadows[1],
-          border: `1px solid ${theme.palette.divider}`
-        }}>
-          <p style={{
-            fontSize: 14,
-            color: theme.palette.text.secondary,
-            margin: 0
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: 40 }}>
+            <LoadingSpinner />
+          </div>
+        ) : error ? (
+          <div style={{
+            textAlign: 'center',
+            padding: 40,
+            color: theme.palette.error.main
           }}>
-            Showing {((currentPage - 1) * itemsPerPage) + 1} to {Math.min(currentPage * itemsPerPage, totalItems)} of {totalItems} payments
-          </p>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button
-              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-              disabled={currentPage === 1}
-              style={{
-                padding: '8px 12px',
-                background: currentPage === 1 ? theme.palette.grey[300] : theme.palette.primary.main,
-                color: currentPage === 1 ? theme.palette.grey[600] : theme.palette.primary.contrastText,
-                border: 'none',
-                borderRadius: 6,
-                cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 4
-              }}
-            >
-              <ChevronLeft style={{ width: 16, height: 16 }} />
-              Previous
-            </button>
-            <button
-              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-              disabled={currentPage === totalPages}
-              style={{
-                padding: '8px 12px',
-                background: currentPage === totalPages ? theme.palette.grey[300] : theme.palette.primary.main,
-                color: currentPage === totalPages ? theme.palette.grey[600] : theme.palette.primary.contrastText,
-                border: 'none',
-                borderRadius: 6,
-                cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 4
-              }}
-            >
-              Next
-              <ChevronRight style={{ width: 16, height: 16 }} />
-            </button>
+            <AlertCircle size={24} style={{ marginBottom: 8 }} />
+            <p>{error}</p>
           </div>
-        </div>
-      )}
+        ) : (
+          <DataTable
+            data={filteredPayments}
+            columns={columns}
+            pagination={{
+              currentPage,
+              totalPages,
+              totalItems,
+              itemsPerPage,
+              onPageChange: setCurrentPage
+            }}
+            onPerPageChange={(newPerPage) => {
+              // Handle per page change if needed
+            }}
+            perPageOptions={[5, 10, 25, 50, 100]}
+          />
+        )}
+      </div>
     </div>
   );
 };

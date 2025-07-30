@@ -39,7 +39,7 @@ interface Medicine {
   product_category: string;
 }
 interface PaymentState {
-  method: string;
+  method: "cash" | "card" | "mobile" | null;
   amount: string;
   change: number;
 }
@@ -282,9 +282,46 @@ const SimpleDispensing: React.FC = () => {
           );
         }
 
+        const dispenseResult = await dispenseResponse.json();
+
+        // Create PaymentApproval record for reporting
+        const paymentApprovalPayload = {
+          Patient_ID: "PASSOVER-CUSTOMER",
+          Product_ID: item.medicineId,
+          transaction_ID: dispenseResult.data?.transaction_id || dispensePayload.transaction_id,
+          status: "Paid",
+          approved_by: currentUserId,
+          approved_quantity: item.quantity.toString(),
+          approved_amount: (item.price * item.quantity).toString(),
+          approved_payment_method: payment.method || "cash",
+          dispense_id: dispenseResult.data?.id || dispenseResult.id,
+        };
+
+        const paymentApprovalResponse = await fetch(
+          `${API_BASE_URL}/api/payment-approve`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+              Accept: "application/json",
+            },
+            body: JSON.stringify(paymentApprovalPayload),
+          }
+        );
+
+        // Don't fail if payment approval creation fails, just log it
+        if (!paymentApprovalResponse.ok) {
+          const errorText = await paymentApprovalResponse.text();
+          console.warn("Failed to create payment approval record:", errorText);
+          console.warn("Payment approval payload:", paymentApprovalPayload);
+        } else {
+          console.log("Payment approval created successfully:", await paymentApprovalResponse.json());
+        }
+
         return {
           update: await updateResponse.json(),
-          dispense: await dispenseResponse.json(),
+          dispense: dispenseResult,
         };
       });
 
@@ -630,7 +667,29 @@ const SimpleDispensing: React.FC = () => {
         calculateTotal={calculateTotal}
         handlePayment={handlePayment}
         loading={loading}
-        paymentMethods={settings?.payment_options || []}
+        paymentMethods={settings?.payment_options?.filter(payment => payment.isActive).map(payment => {
+          // Map payment names to the expected IDs, with fallbacks
+          let paymentId: "cash" | "card" | "mobile";
+          const paymentName = payment.name?.toLowerCase() || '';
+          
+          if (paymentName.includes('cash') || paymentName.includes('money')) {
+            paymentId = "cash";
+          } else if (paymentName.includes('card') || paymentName.includes('credit') || paymentName.includes('debit')) {
+            paymentId = "card";
+          } else if (paymentName.includes('mobile') || paymentName.includes('mpesa') || paymentName.includes('tigo') || paymentName.includes('airtel')) {
+            paymentId = "mobile";
+          } else {
+            // Default to cash for unknown payment methods
+            paymentId = "cash";
+          }
+          
+          return {
+            id: paymentId,
+            name: payment.name || "Unknown",
+            icon: null,
+            color: "#3f51b5"
+          };
+        }) || []}
       />
 
       <SuccessModal

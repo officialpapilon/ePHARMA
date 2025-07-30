@@ -27,7 +27,7 @@ class ManagementDashboardController extends Controller
             $startOfWeek = $now->copy()->startOfWeek();
             $lastMonth = $now->copy()->subMonth();
 
-            // Financial Analytics - Include both PaymentApproval and FinancialActivity
+            // Financial Analytics - Include PaymentApproval, FinancialActivity, and Dispensed
             $totalRevenue = PaymentApproval::where('status', 'approved')
                 ->sum('approved_amount') + 
                 FinancialActivity::where('status', 'approved')
@@ -35,7 +35,9 @@ class ManagementDashboardController extends Controller
                 ->sum('amount') -
                 FinancialActivity::where('status', 'approved')
                 ->where('type', 'expense')
-                ->sum('amount');
+                ->sum('amount') +
+                Dispensed::where('transaction_status', 'completed')
+                ->sum('total_price');
             
             $monthlyRevenue = PaymentApproval::where('status', 'approved')
                 ->whereBetween('created_at', [$startOfMonth, $now])
@@ -47,7 +49,10 @@ class ManagementDashboardController extends Controller
                 FinancialActivity::where('status', 'approved')
                 ->where('type', 'expense')
                 ->whereBetween('transaction_date', [$startOfMonth, $now])
-                ->sum('amount');
+                ->sum('amount') +
+                Dispensed::where('transaction_status', 'completed')
+                ->whereBetween('created_at', [$startOfMonth, $now])
+                ->sum('total_price');
             
             $weeklyRevenue = PaymentApproval::where('status', 'approved')
                 ->whereBetween('created_at', [$startOfWeek, $now])
@@ -59,7 +64,10 @@ class ManagementDashboardController extends Controller
                 FinancialActivity::where('status', 'approved')
                 ->where('type', 'expense')
                 ->whereBetween('transaction_date', [$startOfWeek, $now])
-                ->sum('amount');
+                ->sum('amount') +
+                Dispensed::where('transaction_status', 'completed')
+                ->whereBetween('created_at', [$startOfWeek, $now])
+                ->sum('total_price');
 
             // Inventory Analytics
             $totalProducts = MedicinesCache::count();
@@ -69,14 +77,18 @@ class ManagementDashboardController extends Controller
             $outOfStockProducts = MedicinesCache::where('current_quantity', 0)->count();
             $totalInventoryValue = MedicinesCache::sum(DB::raw('current_quantity * CAST(product_price AS DECIMAL(10,2))'));
 
-            // Sales Analytics - Include both PaymentApproval and FinancialActivity
+            // Sales Analytics - Include PaymentApproval, FinancialActivity, and Dispensed
             $totalSales = PaymentApproval::where('status', 'approved')->count() +
-                FinancialActivity::where('status', 'approved')->count();
+                FinancialActivity::where('status', 'approved')->count() +
+                Dispensed::where('transaction_status', 'completed')->count();
             $monthlySales = PaymentApproval::where('status', 'approved')
                 ->whereBetween('created_at', [$startOfMonth, $now])
                 ->count() +
                 FinancialActivity::where('status', 'approved')
                 ->whereBetween('transaction_date', [$startOfMonth, $now])
+                ->count() +
+                Dispensed::where('transaction_status', 'completed')
+                ->whereBetween('created_at', [$startOfMonth, $now])
                 ->count();
             
             $totalCustomers = Customer::count();
@@ -112,6 +124,21 @@ class ManagementDashboardController extends Controller
                         'description' => "Sale of Tsh " . number_format($sale->approved_amount) . " to " . $customerName,
                         'timestamp' => $sale->created_at->toISOString(),
                         'amount' => (float) $sale->approved_amount
+                    ];
+                });
+
+            // Add Simple Dispense transactions to recent activities
+            $recentSimpleDispenses = Dispensed::where('transaction_status', 'completed')
+                ->orderBy('created_at', 'desc')
+                ->limit(10)
+                ->get()
+                ->map(function ($dispense) {
+                    return [
+                        'id' => (string) $dispense->id,
+                        'type' => 'simple_dispense',
+                        'description' => "Simple dispense of Tsh " . number_format($dispense->total_price) . " to Passover Customer",
+                        'timestamp' => $dispense->created_at->toISOString(),
+                        'amount' => (float) $dispense->total_price
                     ];
                 });
 
@@ -162,6 +189,7 @@ class ManagementDashboardController extends Controller
             // Merge and sort recent activities
             $recentActivities = $recentSales->toArray();
             $recentActivities = array_merge($recentActivities, $recentFinancialActivities->toArray());
+            $recentActivities = array_merge($recentActivities, $recentSimpleDispenses->toArray()); // Add Simple Dispense transactions
             $recentActivities = array_merge($recentActivities, $recentStockActivities->toArray());
             $recentActivities = collect($recentActivities)
                 ->sortByDesc('timestamp')

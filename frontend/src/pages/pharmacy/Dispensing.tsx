@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useTheme } from '@mui/material';
-import { Search, Plus, Trash2, Send, User, Pill, ShoppingCart, ChevronRight, X } from 'lucide-react';
+import { Search, Plus, Trash2, Send, User, Pill, ShoppingCart, X } from 'lucide-react';
 import { API_BASE_URL } from '../../../constants';
 import Spinner from '../../components/UI/Spinner/index.tsx';
 import Input from '../../components/UI/Input';
@@ -87,7 +87,16 @@ const Dispensing: React.FC = () => {
       const data = JSON.parse(text);
       const customersArray = Array.isArray(data) ? data : Array.isArray(data.data) ? data.data : [];
       if (!Array.isArray(customersArray)) throw new Error('Expected an array of customers');
-      setCustomers(customersArray.map((c: any) => ({ ...c, id: String(c.id) })));
+      setCustomers(customersArray.map((c: any) => ({
+        id: String(c.id || c.ID),
+        first_name: c.first_name || c.firstName || '',
+        last_name: c.last_name || c.lastName || '',
+        phone: c.phone || c.phone_number || '',
+        email: c.email || '',
+        address: c.address || '',
+        age: c.age || undefined,
+        gender: c.gender || '',
+      })));
     } catch (err: any) {
       setError(err.message);
       setCustomers([]);
@@ -158,9 +167,25 @@ const Dispensing: React.FC = () => {
       });
       const text = await response.text();
       if (!response.ok) throw new Error(`Failed to add patient: ${response.status} - ${text}`);
-      const newCustomer = JSON.parse(text);
-      setCustomers([...customers, { ...newCustomer, id: String(newCustomer.id) }]);
-      setSelectedCustomer({ ...newCustomer, id: String(newCustomer.id) });
+      const responseData = JSON.parse(text);
+      
+      // Handle different response structures
+      const newCustomer = responseData.data || responseData;
+      
+      // Ensure all required fields are present with proper fallbacks
+      const customerData = {
+        id: String(newCustomer.id || newCustomer.ID),
+        first_name: newCustomer.first_name || newCustomer.firstName || '',
+        last_name: newCustomer.last_name || newCustomer.lastName || '',
+        phone: newCustomer.phone || newCustomer.phone_number || '',
+        email: newCustomer.email || '',
+        address: newCustomer.address || '',
+        age: newCustomer.age || undefined,
+        gender: newCustomer.gender || '',
+      };
+      
+      setCustomers([...customers, customerData]);
+      setSelectedCustomer(customerData);
       setShowAddPatientModal(false);
       setNewPatient({ first_name: '', last_name: '', phone: '', email: '', address: '', age: undefined, gender: '' });
     } catch (err: any) {
@@ -179,6 +204,12 @@ const Dispensing: React.FC = () => {
 
     const existingItemIndex = cart.findIndex((item) => item.medicineId === medicine.product_id);
     if (existingItemIndex >= 0) {
+      // Check if adding one more would exceed available stock
+      const currentQuantity = cart[existingItemIndex].quantity;
+      if (currentQuantity >= medicine.current_quantity) {
+        alert(`Cannot add more ${medicine.product_name}. Only ${medicine.current_quantity} units available in stock.`);
+        return;
+      }
       const updatedCart = [...cart];
       updatedCart[existingItemIndex].quantity += 1;
       setCart(updatedCart);
@@ -203,7 +234,7 @@ const Dispensing: React.FC = () => {
   };
 
   const calculateTotal = () => {
-    return cart.reduce((total, item) => total + item.quantity * item.price, 0).toFixed(2);
+    return cart.reduce((total, item) => total + item.quantity * item.price, 0);
   };
 
   const handleSendToCashier = async () => {
@@ -217,21 +248,43 @@ const Dispensing: React.FC = () => {
       return;
     }
     
+    // Validate stock quantities before sending to cashier
+    const stockValidationErrors = [];
+    for (const item of cart) {
+      const medicine = medicines.find(m => 
+        m.product_id === item.medicineId || 
+        m.id === item.medicineId ||
+        m.product_id === item.id ||
+        m.id === item.id
+      );
+      const maxStock = medicine ? medicine.current_quantity : 0;
+      if (item.quantity > maxStock) {
+        stockValidationErrors.push(`${item.medicineName}: Requested ${item.quantity}, Available ${maxStock}`);
+      }
+    }
+    
+    if (stockValidationErrors.length > 0) {
+      alert(`Cannot process order due to insufficient stock:\n${stockValidationErrors.join('\n')}`);
+      return;
+    }
+    
     setLoading(true);
     setError(null);
     try {
       const token = localStorage.getItem('token');
       if (!token) throw new Error('No authentication token found');
+      
       const cartData = {
-        patient_ID: String(selectedCustomer.id),
+        patient_ID: String(selectedCustomer!.id),
         product_purchased: cart.map((item) => ({
           product_id: String(item.medicineId),
           product_quantity: item.quantity,
           product_price: item.price,
         })),
-        total_price: parseFloat(calculateTotal()),
-        status: 'sent_to_cashier',
+        total_price: calculateTotal(),
+        status: 'pending',
       };
+      
       const response = await fetch(`${API_BASE_URL}/api/carts`, {
         method: 'POST',
         headers: {
@@ -242,15 +295,16 @@ const Dispensing: React.FC = () => {
         },
         body: JSON.stringify(cartData),
       });
+      
       const text = await response.text();
-      if (!response.ok) throw new Error(`Failed to send to cashier: ${response.status} - ${text}`);
+      if (!response.ok) throw new Error(`Failed to send cart to cashier: ${response.status} - ${text}`);
       const result = JSON.parse(text);
       
       // Handle both old and new response formats
       const transactionId = result.data?.transaction_ID || result.data?.transaction_id || result.transaction_ID;
       if (!transactionId) throw new Error('No transaction_ID returned from server');
       
-      setSuccess(`Cart sent to cashier! Transaction ID: ${transactionId}`);
+      setSuccess(`Cart sent to cashier successfully! Transaction ID: ${transactionId}`);
       setCart([]);
       fetchMedicines();
       setTimeout(() => setSuccess(null), 3000);
@@ -269,54 +323,23 @@ const Dispensing: React.FC = () => {
     m.product_name.toLowerCase().includes(medicineSearchTerm.toLowerCase())
   );
 
-  const increaseCartItem = (id: string) => {
-    setCart(cart => cart.map(item => item.id === id ? { ...item, quantity: item.quantity + 1 } : item));
-  };
-  const decreaseCartItem = (id: string) => {
-    setCart(cart => cart.flatMap(item => {
-      if (item.id === id) {
-        if (item.quantity > 1) {
-          return { ...item, quantity: item.quantity - 1 };
-        } else {
-          // Remove item if quantity is 1
-          return [];
-        }
-      }
-      return item;
-    }));
-  };
-
   // Update setCartItemQuantity to clamp value on both change and blur
   const setCartItemQuantity = (id: string, value: string, max: number) => {
     let qty = parseInt(value.replace(/[^0-9]/g, ''));
     if (!qty || qty < 1) qty = 1;
-    if (qty > max) qty = max;
+    if (qty > max) {
+      qty = max;
+      // Show alert if user tries to exceed stock
+      if (parseInt(value.replace(/[^0-9]/g, '')) > max) {
+        alert(`Cannot exceed available stock of ${max} units`);
+      }
+    }
     setCart(cart => cart.map(item => item.id === id ? { ...item, quantity: qty } : item));
   };
 
   return (
-    <main style={{ minHeight: '100vh', width: '100%', maxWidth: '100vw', background: theme.palette.background.default, boxSizing: 'border-box', padding: '16px' }}>
-      {/* Header */}
-      <header style={{ background: `linear-gradient(90deg, ${theme.palette.primary.main} 0%, ${theme.palette.primary.light} 100%)`, boxShadow: theme.shadows[2] }}>
-        <div style={{ maxWidth: 1440, margin: '0 auto', padding: '16px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Pill style={{ color: theme.palette.primary.contrastText, width: 24, height: 24 }} />
-            <span style={{ color: theme.palette.primary.contrastText, fontWeight: 600, fontSize: 20 }}>PharmaDispense</span>
-            <ChevronRight style={{ color: theme.palette.primary.light, width: 20, height: 20 }} />
-            <span style={{ color: theme.palette.primary.contrastText, fontWeight: 500 }}>Dispensing</span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center' }}>
-            <div style={{ position: 'relative', marginRight: 16 }}>
-              <ShoppingCart style={{ color: theme.palette.primary.contrastText, width: 24, height: 24 }} />
-              {cart.length > 0 && (
-                <span style={{ position: 'absolute', top: -8, right: -8, background: theme.palette.background.paper, color: theme.palette.success.main, borderRadius: '50%', height: 20, width: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700 }}>{cart.reduce((sum, item) => sum + item.quantity, 0)}</span>
-              )}
-            </div>
-          </div>
-        </div>
-      </header>
-
-      {/* Customer Alert */}
+    <main style={{ minHeight: '100vh', width: '100%', maxWidth: '100vw', background: theme.palette.background.default, boxSizing: 'border-box', padding: '16px' }}> 
+     {/* Customer Alert */}
       {showCustomerAlert && (
         <div className="fixed top-20 right-4 bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded shadow-lg z-50 animate-fade-in">
           <div className="flex items-center">
@@ -444,7 +467,7 @@ const Dispensing: React.FC = () => {
                 )}
               </div>
               {selectedCustomer && (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12, fontSize: 14 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, fontSize: 14 }}>
                   <div>
                     <p style={{ color: theme.palette.text.secondary }}>Phone</p>
                     <p style={{ color: theme.palette.text.primary }}>{selectedCustomer.phone || 'N/A'}</p>
@@ -452,6 +475,10 @@ const Dispensing: React.FC = () => {
                   <div>
                     <p style={{ color: theme.palette.text.secondary }}>Email</p>
                     <p style={{ color: theme.palette.text.primary }}>{selectedCustomer.email || 'N/A'}</p>
+                  </div>
+                  <div>
+                    <p style={{ color: theme.palette.text.secondary }}>Address</p>
+                    <p style={{ color: theme.palette.text.primary }}>{selectedCustomer.address || 'N/A'}</p>
                   </div>
                 </div>
               )}
@@ -541,16 +568,21 @@ const Dispensing: React.FC = () => {
                   style={{ display: 'flex', alignItems: 'center', padding: '8px 16px', background: loading ? theme.palette.action.disabledBackground : theme.palette.primary.main, color: theme.palette.primary.contrastText, borderRadius: 10, border: 'none', cursor: loading ? 'not-allowed' : 'pointer', transition: 'background 0.2s', boxShadow: theme.shadows[1] }}
                 >
                   <Send style={{ marginRight: 8, width: 20, height: 20 }} />
-                  <span style={{ fontWeight: 600 }}>Process to Cashier</span>
+                  <span style={{ fontWeight: 600 }}>Send to Cashier</span>
                 </button>
               </div>
               
               <div style={{ borderBottom: `1px solid ${theme.palette.divider}` }}>
                 {cart.length > 0 ? (
                   cart.map((item) => {
-                    // Find the medicine to get the current stock
-                    const medicine = medicines.find(m => m.product_id === item.medicineId || m.id === item.medicineId);
-                    const maxStock = medicine ? medicine.current_quantity : 9999;
+                    // Find the medicine to get the current stock - improved matching
+                    const medicine = medicines.find(m => 
+                      m.product_id === item.medicineId || 
+                      m.id === item.medicineId ||
+                      m.product_id === item.id ||
+                      m.id === item.id
+                    );
+                    const maxStock = medicine ? medicine.current_quantity : 0;
                     return (
                       <div key={item.id} style={{ padding: 12 }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -564,10 +596,24 @@ const Dispensing: React.FC = () => {
                                 value={item.quantity}
                                 onChange={e => setCartItemQuantity(item.id, e.target.value, maxStock)}
                                 onBlur={e => setCartItemQuantity(item.id, e.target.value, maxStock)}
-                                style={{ width: 50, textAlign: 'center', margin: '0 8px', borderRadius: 4, border: '1px solid #ccc', background: '#fff' }}
+                                style={{ 
+                                  width: 50, 
+                                  textAlign: 'center', 
+                                  margin: '0 8px', 
+                                  borderRadius: 4, 
+                                  border: item.quantity > maxStock ? '1px solid #f44336' : '1px solid #ccc', 
+                                  background: '#fff',
+                                  color: item.quantity > maxStock ? '#f44336' : 'inherit'
+                                }}
                               />
-                              <span style={{ fontSize: 12, color: theme.palette.text.secondary, marginLeft: 4 }}>
+                              <span style={{ 
+                                fontSize: 12, 
+                                color: item.quantity > maxStock ? theme.palette.error.main : theme.palette.text.secondary, 
+                                marginLeft: 4,
+                                fontWeight: item.quantity > maxStock ? 'bold' : 'normal'
+                              }}>
                                 / {maxStock} in stock
+                                {item.quantity > maxStock && ' (Exceeds stock!)'}
                               </span>
                               × Tsh {item.price.toFixed(2)}
                             </p>
@@ -721,6 +767,7 @@ const Dispensing: React.FC = () => {
           </div>
         </div>
       )}
+      
     </main>
   );
 };

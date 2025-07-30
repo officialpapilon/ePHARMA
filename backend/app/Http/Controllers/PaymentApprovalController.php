@@ -9,6 +9,7 @@ use App\Models\MedicinesCache;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
+use Illuminate\Support\Facades\Log;
 
 class PaymentApprovalController extends Controller
 {
@@ -34,33 +35,69 @@ class PaymentApprovalController extends Controller
 
     public function store(Request $request)
     {
-        $validated = $request->validate([
+        // Check if this is a simple dispense transaction (starts with SIMPLE-)
+        $isSimpleDispense = str_starts_with($request->input('transaction_ID', ''), 'SIMPLE-');
+        
+        $validationRules = [
             'Patient_ID' => 'required|string',
+            'Product_ID' => 'required|string',
             'transaction_ID' => 'required|string',
             'status' => 'required|string',
             'approved_by' => 'required|integer',
             'approved_amount' => 'required|string',
             'approved_payment_method' => 'required|string',
-        ]);
-
-        // Get the original cart to get all products
-        $cart = Carts::where('transaction_ID', $validated['transaction_ID'])->first();
+            'approved_quantity' => 'required|string',
+        ];
         
-        if (!$cart) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Cart not found for this transaction'
-            ], 404);
+        // Only require dispense_id for simple dispense transactions
+        if ($isSimpleDispense) {
+            $validationRules['dispense_id'] = 'required';
         }
+        
+        $validated = $request->validate($validationRules);
+        
+        \Log::info('PaymentApproval store called', [
+            'transaction_ID' => $validated['transaction_ID'],
+            'isSimpleDispense' => $isSimpleDispense,
+            'Patient_ID' => $validated['Patient_ID'],
+            'Product_ID' => $validated['Product_ID'],
+        ]);
+        
+        if ($isSimpleDispense) {
+            // For simple dispense, we don't need to check for cart
+            $totalQuantity = intval($validated['approved_quantity']);
+            $dispenseId = $validated['dispense_id'];
+            \Log::info('Simple dispense detected', [
+                'totalQuantity' => $totalQuantity,
+                'dispenseId' => $dispenseId,
+            ]);
+        } else {
+            // For complex dispense, get the original cart to get all products
+            $cart = Carts::where('transaction_ID', $validated['transaction_ID'])->first();
+            
+            if (!$cart) {
+                \Log::warning('Cart not found for complex dispense', [
+                    'transaction_ID' => $validated['transaction_ID'],
+                ]);
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Cart not found for this transaction'
+                ], 404);
+            }
 
-        // Calculate total quantity from all products
-        $totalQuantity = 0;
-        foreach ($cart->product_purchased as $product) {
-            $totalQuantity += $product['product_quantity'];
+            // Calculate total quantity from all products
+            $totalQuantity = 0;
+            foreach ($cart->product_purchased as $product) {
+                $totalQuantity += $product['product_quantity'];
+            }
+
+            // Generate a unique dispense ID for complex dispense
+            $dispenseId = 'DISP-' . date('Y') . '-' . str_pad(rand(1, 9999), 4, '0', STR_PAD_LEFT);
+            \Log::info('Complex dispense detected', [
+                'totalQuantity' => $totalQuantity,
+                'dispenseId' => $dispenseId,
+            ]);
         }
-
-        // Generate a unique dispense ID
-        $dispenseId = 'DISP-' . date('Y') . '-' . str_pad(rand(1, 9999), 4, '0', STR_PAD_LEFT);
 
         // Get user name for approved_by
         $user = User::find($validated['approved_by']);
@@ -69,7 +106,7 @@ class PaymentApprovalController extends Controller
         try {
             $paymentApproval = PaymentApproval::create([
                 'Patient_ID' => $validated['Patient_ID'],
-                'Product_ID' => $cart->product_purchased[0]['product_id'], // Keep first product for compatibility
+                'Product_ID' => $validated['Product_ID'],
                 'transaction_ID' => $validated['transaction_ID'],
                 'status' => 'Paid', // Change from 'Approved' to 'Paid'
                 'approved_by' => $validated['approved_by'],

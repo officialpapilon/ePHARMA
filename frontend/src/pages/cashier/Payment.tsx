@@ -4,6 +4,7 @@ import { useTheme } from '@mui/material/styles';
 import { API_BASE_URL } from '../../../constants';
 import CustomDatePicker from '../../components/UI/DatePicker/CustomDatePicker';
 import { useAuth } from '../../contexts/AuthContext';
+import { useSettings } from '../../contexts/SettingsContext';
 
 interface Customer {
   id: string;
@@ -52,11 +53,12 @@ interface Medicine {
 
 const Payment: React.FC = () => {
   const theme = useTheme();
+  const { settings } = useSettings();
   const [searchCustomerName, setSearchCustomerName] = useState('');
   const [searchCustomerId, setSearchCustomerId] = useState('');
   const [searchTransactionId, setSearchTransactionId] = useState('');
   const [amountPaid, setAmountPaid] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'mobile'>('cash');
+  const [paymentMethod, setPaymentMethod] = useState<string>('');
   const [medicines, setMedicines] = useState<Medicine[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -74,6 +76,40 @@ const Payment: React.FC = () => {
 
   // Add state for customer and product lookup
   const [productMap, setProductMap] = useState<Record<string, string>>({});
+
+  // Get payment methods from settings
+  const getPaymentMethods = () => {
+    return settings?.payment_options?.filter(payment => payment.isActive).map(payment => {
+      // Map payment names to the expected IDs, with fallbacks
+      let paymentId: string;
+      const paymentName = payment.name?.toLowerCase() || '';
+      
+      if (paymentName.includes('cash') || paymentName.includes('money')) {
+        paymentId = "cash";
+      } else if (paymentName.includes('card') || paymentName.includes('credit') || paymentName.includes('debit')) {
+        paymentId = "card";
+      } else if (paymentName.includes('mobile') || paymentName.includes('mpesa') || paymentName.includes('tigo') || paymentName.includes('airtel')) {
+        paymentId = "mobile";
+      } else {
+        // Default to cash for unknown payment methods
+        paymentId = "cash";
+      }
+      
+      return {
+        id: paymentId,
+        name: payment.name || "Unknown",
+        type: payment.type || "Cash"
+      };
+    }) || [];
+  };
+
+  // Set default payment method when settings load
+  useEffect(() => {
+    const methods = getPaymentMethods();
+    if (methods.length > 0 && !paymentMethod) {
+      setPaymentMethod(methods[0].id);
+    }
+  }, [settings]);
 
   // Fetch all medicines and build a map
   const fetchProducts = async () => {
@@ -337,6 +373,8 @@ const Payment: React.FC = () => {
   const setPage = (page: number) => {
     setCurrentPage(page);
   };
+
+  const paymentMethods = getPaymentMethods();
 
   return (
     <div style={{ minHeight: '100vh', background: theme.palette.background.default, padding: 32 }}>
@@ -679,17 +717,17 @@ const Payment: React.FC = () => {
               {/* Payment Method Selection */}
               <div style={{ marginBottom: 24 }}>
                 <h3 style={{ fontSize: 16, fontWeight: 600, color: theme.palette.text.primary, marginBottom: 12 }}>Payment Method</h3>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
-                  {['cash', 'card', 'mobile'].map((method) => (
+                <div style={{ display: 'grid', gridTemplateColumns: `repeat(${paymentMethods.length}, 1fr)`, gap: 12 }}>
+                  {paymentMethods.map((method) => (
                     <button
-                      key={method}
-                      onClick={() => setPaymentMethod(method as 'cash' | 'card' | 'mobile')}
+                      key={method.id}
+                      onClick={() => setPaymentMethod(method.id)}
                       style={{
                         padding: '12px 16px',
-                        border: `2px solid ${paymentMethod === method ? theme.palette.primary.main : theme.palette.divider}`,
+                        border: `2px solid ${paymentMethod === method.id ? theme.palette.primary.main : theme.palette.divider}`,
                         borderRadius: 8,
-                        background: paymentMethod === method ? theme.palette.primary.main : theme.palette.background.paper,
-                        color: paymentMethod === method ? theme.palette.primary.contrastText : theme.palette.text.primary,
+                        background: paymentMethod === method.id ? theme.palette.primary.main : theme.palette.background.paper,
+                        color: paymentMethod === method.id ? theme.palette.primary.contrastText : theme.palette.text.primary,
                         cursor: 'pointer',
                         fontSize: 14,
                         fontWeight: 600,
@@ -697,7 +735,7 @@ const Payment: React.FC = () => {
                         transition: 'all 0.2s ease'
                       }}
                     >
-                      {method}
+                      {method.name}
                     </button>
                   ))}
                 </div>

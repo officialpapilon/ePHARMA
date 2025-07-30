@@ -63,10 +63,18 @@ class FinancialAuditController extends Controller
 
     private function getFinancialSummary($startDateTime, $endDateTime)
     {
-        // Pharmacy Revenue
+        // Pharmacy Revenue (Complex Dispensing)
         $pharmacyRevenue = PaymentApproval::whereBetween('approved_at', [$startDateTime, $endDateTime])
             ->where('status', 'Paid')
             ->sum('approved_amount');
+
+        // Simple Dispensing Revenue
+        $simpleDispenseRevenue = Dispensed::whereBetween('created_at', [$startDateTime, $endDateTime])
+            ->where('transaction_status', 'completed')
+            ->sum('total_price');
+
+        // Total Pharmacy Revenue (Complex + Simple)
+        $totalPharmacyRevenue = $pharmacyRevenue + $simpleDispenseRevenue;
 
         // Wholesale Revenue
         $wholesaleRevenue = WholesalePayment::whereBetween('payment_date', [$startDateTime, $endDateTime])
@@ -83,19 +91,22 @@ class FinancialAuditController extends Controller
             ->where('type', 'income')
             ->sum('amount');
 
-        $totalRevenue = $pharmacyRevenue + $wholesaleRevenue + $financialIncome;
+        $totalRevenue = $totalPharmacyRevenue + $wholesaleRevenue + $financialIncome;
         $netProfit = $totalRevenue - $expenses;
 
         return [
             'total_revenue' => $totalRevenue,
-            'pharmacy_revenue' => $pharmacyRevenue,
+            'pharmacy_revenue' => $totalPharmacyRevenue,
+            'complex_dispensing_revenue' => $pharmacyRevenue,
+            'simple_dispensing_revenue' => $simpleDispenseRevenue,
             'wholesale_revenue' => $wholesaleRevenue,
             'financial_income' => $financialIncome,
             'total_expenses' => $expenses,
             'net_profit' => $netProfit,
             'profit_margin' => $totalRevenue > 0 ? ($netProfit / $totalRevenue) * 100 : 0,
             'transaction_count' => [
-                'pharmacy' => PaymentApproval::whereBetween('approved_at', [$startDateTime, $endDateTime])->count(),
+                'pharmacy_complex' => PaymentApproval::whereBetween('approved_at', [$startDateTime, $endDateTime])->count(),
+                'pharmacy_simple' => Dispensed::whereBetween('created_at', [$startDateTime, $endDateTime])->count(),
                 'wholesale' => WholesalePayment::whereBetween('payment_date', [$startDateTime, $endDateTime])->count(),
                 'expenses' => FinancialActivity::whereBetween('transaction_date', [$startDateTime, $endDateTime])->where('type', 'expense')->count(),
             ],
@@ -104,16 +115,17 @@ class FinancialAuditController extends Controller
 
     private function getPharmacyTransactions($startDateTime, $endDateTime, $userId = null)
     {
-        $query = PaymentApproval::with(['creator', 'approver', 'patient'])
+        // Get Complex Dispensing transactions
+        $complexQuery = PaymentApproval::with(['creator', 'approver', 'patient'])
             ->whereBetween('approved_at', [$startDateTime, $endDateTime]);
 
         if ($userId) {
-            $query->where('created_by', $userId);
+            $complexQuery->where('created_by', $userId);
         }
 
-        $transactions = $query->orderBy('approved_at', 'desc')->get();
+        $complexTransactions = $complexQuery->orderBy('approved_at', 'desc')->get();
 
-        return $transactions->map(function ($transaction) {
+        $complexData = $complexTransactions->map(function ($transaction) {
             return [
                 'id' => $transaction->Payment_ID,
                 'transaction_id' => $transaction->transaction_ID,
@@ -125,9 +137,37 @@ class FinancialAuditController extends Controller
                 'approved_by' => $transaction->approver ? $transaction->approver->name : 'Unknown',
                 'created_by' => $transaction->creator ? $transaction->creator->name : 'Unknown',
                 'approved_at' => $transaction->approved_at,
-                'type' => 'pharmacy',
+                'type' => 'complex_dispensing',
             ];
         });
+
+        // Get Simple Dispensing transactions
+        $simpleQuery = Dispensed::whereBetween('created_at', [$startDateTime, $endDateTime]);
+
+        if ($userId) {
+            $simpleQuery->where('created_by', $userId);
+        }
+
+        $simpleTransactions = $simpleQuery->orderBy('created_at', 'desc')->get();
+
+        $simpleData = $simpleTransactions->map(function ($transaction) {
+            return [
+                'id' => $transaction->id,
+                'transaction_id' => $transaction->transaction_id,
+                'patient_name' => 'Passover Customer',
+                'patient_phone' => 'N/A',
+                'amount' => $transaction->total_price,
+                'payment_method' => 'cash',
+                'status' => $transaction->transaction_status,
+                'approved_by' => 'Auto-approved',
+                'created_by' => 'System',
+                'approved_at' => $transaction->created_at,
+                'type' => 'simple_dispensing',
+            ];
+        });
+
+        // Combine and sort by date
+        return $complexData->concat($simpleData)->sortByDesc('approved_at')->values();
     }
 
     private function getWholesaleTransactions($startDateTime, $endDateTime, $userId = null)

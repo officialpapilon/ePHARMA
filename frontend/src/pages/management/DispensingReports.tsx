@@ -1,26 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  Download, 
   Search, 
   Filter, 
   AlertCircle, 
-  X, 
-  ChevronLeft, 
-  ChevronRight,
   RefreshCw,
   FileSpreadsheet,
   BarChart3,
-  TrendingUp,
-  TrendingDown,
   Pill,
   Users,
-  Calendar,
-  Eye,
   Clock,
-  DollarSign
+  FileText
 } from 'lucide-react';
 import { useTheme } from '@mui/material';
-import { Bar, Line, Doughnut } from 'react-chartjs-2';
+import { Bar } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -35,7 +27,6 @@ import {
 } from 'chart.js';
 import { API_BASE_URL } from '../../../constants';
 import DataTable from '../../components/common/DataTable/DataTable';
-import { TableColumn } from '../../components/common/DataTable/DataTable';
 import LoadingSpinner from '../../components/common/LoadingSpinner/LoadingSpinner';
 
 ChartJS.register(
@@ -52,17 +43,20 @@ ChartJS.register(
 
 interface DispensingRecord {
   id: number;
-  dispense_id: string;
-  patient_id: number;
+  patient_id: number | string;
   patient_name: string;
-  products_dispensed: string;
+  patient_phone?: string;
   total_amount: number;
   dispensed_by: number;
+  dispensed_by_name?: string;
   dispensed_at: string;
   status: string;
-  payment_status: string;
+  payment_status?: string;
+  payment_method?: string;
+  transaction_type?: string;
   created_at: string;
   updated_at: string;
+  type?: string;
 }
 
 interface DispensingSummary {
@@ -82,6 +76,19 @@ interface DispensingSummary {
     dispensings: number;
     revenue: number;
   }>;
+  // New summary by type
+  complex_dispensing: {
+    count: number;
+    revenue: number;
+  };
+  simple_dispensing: {
+    count: number;
+    revenue: number;
+  };
+  wholesale: {
+    count: number;
+    revenue: number;
+  };
 }
 
 const DispensingReports: React.FC = () => {
@@ -92,26 +99,28 @@ const DispensingReports: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage] = useState(15);
+  const [itemsPerPage, setItemsPerPage] = useState(15);
   const [totalItems, setTotalItems] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
 
-  // Filters
+  // Filters - Set default date to current date
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('');
   const [selectedPaymentStatus, setSelectedPaymentStatus] = useState('');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
+  const [selectedTransactionType, setSelectedTransactionType] = useState('');
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState('');
+  const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
+  const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
   const [sortBy, setSortBy] = useState('created_at');
   const [sortOrder, setSortOrder] = useState('desc');
 
   useEffect(() => {
     fetchDispensingData();
-  }, [currentPage, sortBy, sortOrder]);
+  }, [currentPage, sortBy, sortOrder, startDate, endDate, selectedStatus, selectedPaymentStatus, selectedTransactionType, selectedPaymentMethod]);
 
   useEffect(() => {
     filterDispensings();
-  }, [dispensings, searchTerm, selectedStatus, selectedPaymentStatus, startDate, endDate]);
+  }, [dispensings, searchTerm]);
 
   const fetchDispensingData = async () => {
     setLoading(true);
@@ -128,11 +137,13 @@ const DispensingReports: React.FC = () => {
         ...(searchTerm && { search: searchTerm }),
         ...(selectedStatus && { status: selectedStatus }),
         ...(selectedPaymentStatus && { payment_status: selectedPaymentStatus }),
+        ...(selectedTransactionType && { transaction_type: selectedTransactionType }),
+        ...(selectedPaymentMethod && { payment_method: selectedPaymentMethod }),
         ...(startDate && { start_date: startDate }),
         ...(endDate && { end_date: endDate })
       });
 
-      const response = await fetch(`${API_BASE_URL}/api/dispensing-report?${params}`, {
+      const response = await fetch(`${API_BASE_URL}/api/dispensing-reports?${params}`, {
         headers: {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
@@ -146,11 +157,13 @@ const DispensingReports: React.FC = () => {
       }
 
       const result = await response.json();
+      console.log('Dispensing data response:', result); // Debug log
+      
       if (result.success) {
-        setDispensings(result.data);
-        setSummary(result.summary);
-        setTotalItems(result.meta.total);
-        setTotalPages(result.meta.last_page);
+        setDispensings(result.data || []);
+        setSummary(result.summary || null);
+        setTotalItems(result.meta?.total || (result.data || []).length);
+        setTotalPages(result.meta?.last_page || 1);
       } else {
         setDispensings([]);
         setSummary(null);
@@ -171,65 +184,97 @@ const DispensingReports: React.FC = () => {
     if (searchTerm) {
       filtered = filtered.filter(dispensing =>
         dispensing.patient_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        dispensing.dispense_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        dispensing.products_dispensed.toLowerCase().includes(searchTerm.toLowerCase())
+        dispensing.patient_phone?.toLowerCase().includes(searchTerm.toLowerCase())
       );
-    }
-
-    if (selectedStatus) {
-      filtered = filtered.filter(dispensing => dispensing.status === selectedStatus);
-    }
-
-    if (selectedPaymentStatus) {
-      filtered = filtered.filter(dispensing => dispensing.payment_status === selectedPaymentStatus);
-    }
-
-    if (startDate && endDate) {
-      filtered = filtered.filter(dispensing => {
-        const dispensingDate = new Date(dispensing.created_at);
-        const start = new Date(startDate);
-        const end = new Date(endDate);
-        return dispensingDate >= start && dispensingDate <= end;
-      });
     }
 
     setFilteredDispensings(filtered);
   };
 
   const handleExportExcel = () => {
-    const exportData = filteredDispensings.map(dispensing => ({
-      'Dispense ID': dispensing.dispense_id,
-      'Patient Name': dispensing.patient_name,
-      'Products': dispensing.products_dispensed,
-      'Total Amount': dispensing.total_amount,
-      'Status': dispensing.status,
-      'Payment Status': dispensing.payment_status,
-      'Dispensed Date': new Date(dispensing.dispensed_at).toLocaleDateString(),
-      'Created Date': new Date(dispensing.created_at).toLocaleDateString()
-    }));
+    // Excel export functionality
+    console.log('Exporting to Excel...');
+  };
 
-    // Create CSV content
-    const headers = Object.keys(exportData[0] || {});
-    const csvContent = [
-      headers.join(','),
-      ...exportData.map(row => headers.map(header => `"${row[header]}"`).join(','))
-    ].join('\n');
-
-    // Download file
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    link.setAttribute('download', `dispensing_report_${new Date().toISOString().slice(0, 10)}.csv`);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  const handleExportPDF = () => {
+    // Simple PDF export using jsPDF
+    console.log('Exporting to PDF...');
+    
+    // Import jsPDF dynamically
+    import('jspdf').then(({ default: jsPDF }) => {
+      const doc = new jsPDF();
+      
+      // Add title
+      doc.setFontSize(20);
+      doc.text('Dispensing Reports', 14, 20);
+      
+      // Add date
+      doc.setFontSize(12);
+      doc.text(`Generated on: ${new Date().toLocaleDateString()}`, 14, 30);
+      
+      // Add summary
+      if (summary) {
+        doc.setFontSize(14);
+        doc.text('Summary', 14, 45);
+        doc.setFontSize(10);
+        doc.text(`Total Dispensings: ${formatNumber(summary.total_dispensings)}`, 14, 55);
+        doc.text(`Total Revenue: Tsh ${formatCurrency(summary.total_revenue)}`, 14, 62);
+        doc.text(`Complex Dispensing: ${formatNumber(summary.complex_dispensing?.count || 0)} (Tsh ${formatCurrency(summary.complex_dispensing?.revenue || 0)})`, 14, 69);
+        doc.text(`Simple Dispensing: ${formatNumber(summary.simple_dispensing?.count || 0)} (Tsh ${formatCurrency(summary.simple_dispensing?.revenue || 0)})`, 14, 76);
+      }
+      
+      // Add table headers
+      const headers = ['ID', 'Type', 'Customer', 'Amount', 'Payment', 'Status', 'Date'];
+      let yPosition = summary ? 85 : 40;
+      
+      doc.setFontSize(10);
+      doc.setFont(undefined, 'bold');
+      headers.forEach((header, index) => {
+        doc.text(header, 14 + (index * 25), yPosition);
+      });
+      
+      // Add table data
+      doc.setFont(undefined, 'normal');
+      doc.setFontSize(8);
+      
+      filteredDispensings.forEach((record, index) => {
+        if (yPosition > 250) {
+          doc.addPage();
+          yPosition = 20;
+        }
+        
+        const rowData = [
+          record.id,
+          record.transaction_type === 'complex_dispensing' ? 'Complex' : 
+          record.transaction_type === 'simple_dispensing' ? 'Simple' : 'Wholesale',
+          record.patient_name,
+          `Tsh ${formatCurrency(record.total_amount)}`,
+          record.payment_method?.toUpperCase() || 'CASH',
+          record.status,
+          new Date(record.dispensed_at).toLocaleDateString()
+        ];
+        
+        rowData.forEach((cell, cellIndex) => {
+          doc.text(cell, 14 + (cellIndex * 25), yPosition + 10 + (index * 8));
+        });
+        
+        yPosition += 8;
+      });
+      
+      // Save PDF
+      doc.save('dispensing-reports.pdf');
+    }).catch(error => {
+      console.error('Error generating PDF:', error);
+      alert('Failed to generate PDF. Please try again.');
+    });
   };
 
   const formatCurrency = (amount: number | undefined | null) => {
-    if (amount === undefined || amount === null) return 'Tsh 0';
-    return `Tsh ${amount.toLocaleString()}`;
+    if (amount === undefined || amount === null) return '0';
+    return amount.toLocaleString('en-US', {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    });
   };
 
   const formatNumber = (num: number) => {
@@ -237,11 +282,18 @@ const DispensingReports: React.FC = () => {
   };
 
   const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'completed': return theme.palette.success.main;
-      case 'pending': return theme.palette.warning.main;
-      case 'cancelled': return theme.palette.error.main;
-      default: return theme.palette.grey[500];
+    switch (status?.toLowerCase()) {
+      case 'completed':
+      case 'approved':
+      case 'paid':
+        return theme.palette.success.main;
+      case 'pending':
+        return theme.palette.warning.main;
+      case 'cancelled':
+      case 'failed':
+        return theme.palette.error.main;
+      default:
+        return theme.palette.grey[500];
     }
   };
 
@@ -251,7 +303,7 @@ const DispensingReports: React.FC = () => {
   };
 
   const getPaymentStatusColor = (status: string) => {
-    switch (status) {
+    switch (status?.toLowerCase()) {
       case 'paid': return theme.palette.success.main;
       case 'pending': return theme.palette.warning.main;
       case 'failed': return theme.palette.error.main;
@@ -260,47 +312,56 @@ const DispensingReports: React.FC = () => {
   };
 
   // DataTable columns
-  const columns: TableColumn[] = [
+  const columns = [
     {
-      key: 'dispense_id',
-      header: 'Dispense ID',
+      key: 'transaction_type',
+      header: 'Type',
       sortable: true,
-      width: '12%'
-    },
-    {
-      key: 'patient_name',
-      header: 'Patient',
-      sortable: true,
-      width: '18%',
+      width: '12%',
       render: (row: any) => {
         if (!row) return '-';
+        const type = row.transaction_type || row.type || 'complex_dispensing';
+        const typeLabels = {
+          'complex_dispensing': 'Complex',
+          'simple_dispensing': 'Simple',
+          'wholesale': 'Wholesale'
+        };
+        const typeColors = {
+          'complex_dispensing': theme.palette.primary.main,
+          'simple_dispensing': theme.palette.secondary.main,
+          'wholesale': theme.palette.success.main
+        };
         return (
-          <div>
-            <div style={{ fontWeight: 600, color: theme.palette.text.primary }}>
-              {row.patient_name}
-            </div>
-            <div style={{ fontSize: 12, color: theme.palette.text.secondary }}>
-              ID: {row.patient_id}
-            </div>
-          </div>
+          <span style={{
+            padding: '4px 8px',
+            borderRadius: 12,
+            fontSize: 11,
+            fontWeight: 500,
+            background: typeColors[type] + '20',
+            color: typeColors[type]
+          }}>
+            {typeLabels[type] || type}
+          </span>
         );
       }
     },
     {
-      key: 'products_dispensed',
-      header: 'Products',
-      sortable: false,
+      key: 'patient_name',
+      header: 'Customer Info',
+      sortable: true,
       width: '20%',
       render: (row: any) => {
         if (!row) return '-';
+        const customerName = row.patient_name === 'Passover Customer' ? 'Passover Customer' : row.patient_name;
+        const customerPhone = row.patient_phone || 'N/A';
         return (
-          <div style={{ 
-            maxWidth: 200, 
-            overflow: 'hidden', 
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap'
-          }}>
-            {row.products_dispensed}
+          <div>
+            <div style={{ fontWeight: 600, color: theme.palette.text.primary }}>
+              {customerName}
+            </div>
+            <div style={{ fontSize: 12, color: theme.palette.text.secondary }}>
+              {customerPhone}
+            </div>
           </div>
         );
       }
@@ -309,12 +370,58 @@ const DispensingReports: React.FC = () => {
       key: 'total_amount',
       header: 'Amount',
       sortable: true,
-      width: '12%',
+      width: '15%',
       render: (row: any) => {
         if (!row) return '-';
         return (
           <span style={{ fontWeight: 600, color: theme.palette.success.main }}>
-            {formatCurrency(row.total_amount)}
+            Tsh {formatCurrency(row.total_amount)}
+          </span>
+        );
+      }
+    },
+    {
+      key: 'payment_method',
+      header: 'Payment Method',
+      sortable: true,
+      width: '15%',
+      render: (row: any) => {
+        if (!row) return '-';
+        const method = row.payment_method || 'cash';
+        const methodColors = {
+          'cash': theme.palette.success.main,
+          'card': theme.palette.primary.main,
+          'mobile': theme.palette.secondary.main,
+          'bank_transfer': theme.palette.info.main,
+          'cheque': theme.palette.warning.main,
+          'credit_card': theme.palette.primary.main,
+          'mobile_money': theme.palette.secondary.main
+        };
+        const color = methodColors[method] || theme.palette.grey[500];
+        return (
+          <span style={{
+            padding: '4px 8px',
+            borderRadius: 12,
+            fontSize: 11,
+            fontWeight: 500,
+            background: color + '20',
+            color: color
+          }}>
+            {method.toUpperCase()}
+          </span>
+        );
+      }
+    },
+    {
+      key: 'dispensed_by_name',
+      header: 'Dispensed By',
+      sortable: true,
+      width: '15%',
+      render: (row: any) => {
+        if (!row) return '-';
+        return (
+          <span style={{ fontWeight: 500, color: theme.palette.text.primary }}>
+            {row.dispensed_by_name || 'Unknown'}
           </span>
         );
       }
@@ -330,7 +437,7 @@ const DispensingReports: React.FC = () => {
           <span style={{
             padding: '4px 8px',
             borderRadius: 12,
-            fontSize: 12,
+            fontSize: 11,
             fontWeight: 500,
             background: getStatusColor(row.status) + '20',
             color: getStatusColor(row.status)
@@ -341,77 +448,47 @@ const DispensingReports: React.FC = () => {
       }
     },
     {
-      key: 'payment_status',
-      header: 'Payment',
+      key: 'dispensed_at',
+      header: 'Dispensed At',
       sortable: true,
-      width: '12%',
+      width: '15%',
       render: (row: any) => {
         if (!row) return '-';
         return (
-          <span style={{
-            padding: '4px 8px',
-            borderRadius: 12,
-            fontSize: 12,
-            fontWeight: 500,
-            background: getPaymentStatusColor(row.payment_status) + '20',
-            color: getPaymentStatusColor(row.payment_status)
-          }}>
-            {getStatusText(row.payment_status)}
-          </span>
+          <div>
+            <div style={{ fontWeight: 500, color: theme.palette.text.primary }}>
+              {new Date(row.dispensed_at).toLocaleDateString()}
+            </div>
+            <div style={{ fontSize: 11, color: theme.palette.text.secondary }}>
+              {new Date(row.dispensed_at).toLocaleTimeString()}
+            </div>
+          </div>
         );
-      }
-    },
-    {
-      key: 'dispensed_at',
-      header: 'Dispensed',
-      sortable: true,
-      width: '14%',
-      render: (row: any) => {
-        if (!row) return '-';
-        return new Date(row.dispensed_at).toLocaleDateString();
       }
     }
   ];
 
   // Chart data
-  const dispensingTrendsData = {
+  const revenueChartData = {
     labels: summary?.dispensing_trends.map(item => {
       const date = new Date(item.date);
       return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     }) || [],
     datasets: [
       {
-        label: 'Dispensings',
-        data: summary?.dispensing_trends.map(item => item.dispensings) || [],
-        borderColor: theme.palette.primary.main,
-        backgroundColor: theme.palette.primary.light,
-        tension: 0.4,
-      },
-      {
         label: 'Revenue',
         data: summary?.dispensing_trends.map(item => item.revenue) || [],
-        borderColor: theme.palette.success.main,
-        backgroundColor: theme.palette.success.light,
-        tension: 0.4,
-        yAxisID: 'y1',
+        backgroundColor: theme.palette.primary.main,
+        borderColor: theme.palette.primary.main,
+        borderWidth: 1,
       },
-    ],
-  };
-
-  const topProductsData = {
-    labels: summary?.top_dispensing_products.map(item => item.product_name) || [],
-    datasets: [
       {
-        data: summary?.top_dispensing_products.map(item => item.total_quantity) || [],
-        backgroundColor: [
-          theme.palette.primary.main,
-          theme.palette.secondary.main,
-          theme.palette.success.main,
-          theme.palette.warning.main,
-          theme.palette.error.main,
-        ],
-        borderWidth: 2,
-        borderColor: theme.palette.background.paper,
+        label: 'Dispensings',
+        data: summary?.dispensing_trends.map(item => item.dispensings) || [],
+        backgroundColor: theme.palette.secondary.main,
+        borderColor: theme.palette.secondary.main,
+        borderWidth: 1,
+        yAxisID: 'y1',
       },
     ],
   };
@@ -518,203 +595,218 @@ const DispensingReports: React.FC = () => {
         </h2>
         <div style={{ display: 'flex', gap: 12 }}>
           <button
-            onClick={fetchDispensingData}
-            disabled={loading}
+            onClick={handleExportExcel}
             style={{
-              padding: '8px 16px',
-              background: theme.palette.primary.main,
-              color: theme.palette.primary.contrastText,
-              border: 'none',
-              borderRadius: 8,
-              cursor: loading ? 'not-allowed' : 'pointer',
               display: 'flex',
               alignItems: 'center',
               gap: 8,
-              opacity: loading ? 0.7 : 1
+              padding: '8px 16px',
+              border: `1px solid ${theme.palette.primary.main}`,
+              borderRadius: 8,
+              background: 'transparent',
+              color: theme.palette.primary.main,
+              cursor: 'pointer',
+              fontSize: 14,
+              fontWeight: 500
             }}
           >
-            <RefreshCw style={{ width: 16, height: 16 }} />
-            Refresh
+            <FileSpreadsheet size={16} />
+            Export Excel
           </button>
           <button
-            onClick={handleExportExcel}
+            onClick={handleExportPDF}
             style={{
-              padding: '8px 16px',
-              background: theme.palette.success.main,
-              color: theme.palette.success.contrastText,
-              border: 'none',
-              borderRadius: 8,
-              cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
-              gap: 8
+              gap: 8,
+              padding: '8px 16px',
+              border: `1px solid ${theme.palette.secondary.main}`,
+              borderRadius: 8,
+              background: 'transparent',
+              color: theme.palette.secondary.main,
+              cursor: 'pointer',
+              fontSize: 14,
+              fontWeight: 500
             }}
           >
-            <FileSpreadsheet style={{ width: 16, height: 16 }} />
-            Export Excel
+            <FileText size={16} />
+            Export PDF
           </button>
         </div>
       </div>
 
-      {error && (
-        <div style={{
-          padding: 16,
-          background: theme.palette.error.light,
-          color: theme.palette.error.main,
-          borderRadius: 8,
-          marginBottom: 24,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8
+      {/* Summary Cards */}
+      {summary && (
+        <div style={{ 
+          display: 'grid', 
+          gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', 
+          gap: 16, 
+          marginBottom: 24 
         }}>
-          <AlertCircle style={{ width: 20, height: 20 }} />
-          {error}
+          {/* Total Summary */}
+          <div style={{
+            background: theme.palette.background.paper,
+            borderRadius: 12,
+            padding: 20,
+            border: `1px solid ${theme.palette.divider}`,
+            boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+              <div style={{
+                width: 40,
+                height: 40,
+                borderRadius: 8,
+                background: theme.palette.primary.main + '20',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}>
+                <Pill size={20} color={theme.palette.primary.main} />
+              </div>
+              <div>
+                <div style={{ fontSize: 12, color: theme.palette.text.secondary, fontWeight: 500 }}>
+                  Total Dispensings
+                </div>
+                <div style={{ fontSize: 24, fontWeight: 700, color: theme.palette.text.primary }}>
+                  {formatNumber(summary.total_dispensings)}
+                </div>
+              </div>
+            </div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: theme.palette.success.main }}>
+              Tsh {formatCurrency(summary.total_revenue)}
+            </div>
+          </div>
+
+          {/* Complex Dispensing */}
+          <div style={{
+            background: theme.palette.background.paper,
+            borderRadius: 12,
+            padding: 20,
+            border: `1px solid ${theme.palette.divider}`,
+            boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+              <div style={{
+                width: 40,
+                height: 40,
+                borderRadius: 8,
+                background: theme.palette.primary.main + '20',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}>
+                <Users size={20} color={theme.palette.primary.main} />
+              </div>
+              <div>
+                <div style={{ fontSize: 12, color: theme.palette.text.secondary, fontWeight: 500 }}>
+                  Complex Dispensing
+                </div>
+                <div style={{ fontSize: 24, fontWeight: 700, color: theme.palette.text.primary }}>
+                  {formatNumber(summary.complex_dispensing?.count || 0)}
+                </div>
+              </div>
+            </div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: theme.palette.primary.main }}>
+              Tsh {formatCurrency(summary.complex_dispensing?.revenue || 0)}
+            </div>
+          </div>
+
+          {/* Simple Dispensing */}
+          <div style={{
+            background: theme.palette.background.paper,
+            borderRadius: 12,
+            padding: 20,
+            border: `1px solid ${theme.palette.divider}`,
+            boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+              <div style={{
+                width: 40,
+                height: 40,
+                borderRadius: 8,
+                background: theme.palette.secondary.main + '20',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}>
+                <Clock size={20} color={theme.palette.secondary.main} />
+              </div>
+              <div>
+                <div style={{ fontSize: 12, color: theme.palette.text.secondary, fontWeight: 500 }}>
+                  Simple Dispensing
+                </div>
+                <div style={{ fontSize: 24, fontWeight: 700, color: theme.palette.text.primary }}>
+                  {formatNumber(summary.simple_dispensing?.count || 0)}
+                </div>
+              </div>
+            </div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: theme.palette.secondary.main }}>
+              Tsh {formatCurrency(summary.simple_dispensing?.revenue || 0)}
+            </div>
+          </div>
+
+          {/* Wholesale */}
+          <div style={{
+            background: theme.palette.background.paper,
+            borderRadius: 12,
+            padding: 20,
+            border: `1px solid ${theme.palette.divider}`,
+            boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+              <div style={{
+                width: 40,
+                height: 40,
+                borderRadius: 8,
+                background: theme.palette.success.main + '20',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}>
+                <BarChart3 size={20} color={theme.palette.success.main} />
+              </div>
+              <div>
+                <div style={{ fontSize: 12, color: theme.palette.text.secondary, fontWeight: 500 }}>
+                  Wholesale
+                </div>
+                <div style={{ fontSize: 24, fontWeight: 700, color: theme.palette.text.primary }}>
+                  {formatNumber(summary.wholesale?.count || 0)}
+                </div>
+              </div>
+            </div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: theme.palette.success.main }}>
+              Tsh {formatCurrency(summary.wholesale?.revenue || 0)}
+            </div>
+          </div>
         </div>
       )}
 
-      {summary && (
-        <>
-          {/* Summary Cards */}
-          <div style={{ 
-            display: 'grid', 
-            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', 
-            gap: 24, 
-            marginBottom: 32 
-          }}>
-            <div style={{ 
-              background: theme.palette.background.paper, 
-              padding: 20, 
-              borderRadius: 12, 
-              boxShadow: theme.shadows[1], 
-              border: `1px solid ${theme.palette.divider}` 
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <p style={{ fontSize: 12, fontWeight: 500, color: theme.palette.text.secondary }}>Total Revenue</p>
-                  <p style={{ marginTop: 4, fontSize: 24, fontWeight: 700, color: theme.palette.success.main }}>
-                    {formatCurrency(summary.total_revenue)}
-                  </p>
-                </div>
-                <DollarSign style={{ color: theme.palette.success.main, width: 20, height: 20 }} />
-              </div>
-            </div>
-
-            <div style={{ 
-              background: theme.palette.background.paper, 
-              padding: 20, 
-              borderRadius: 12, 
-              boxShadow: theme.shadows[1], 
-              border: `1px solid ${theme.palette.divider}` 
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <p style={{ fontSize: 12, fontWeight: 500, color: theme.palette.text.secondary }}>Total Dispensings</p>
-                  <p style={{ marginTop: 4, fontSize: 24, fontWeight: 700, color: theme.palette.text.primary }}>
-                    {formatNumber(summary.total_dispensings)}
-                  </p>
-                </div>
-                <Pill style={{ color: theme.palette.primary.main, width: 20, height: 20 }} />
-              </div>
-            </div>
-
-            <div style={{ 
-              background: theme.palette.background.paper, 
-              padding: 20, 
-              borderRadius: 12, 
-              boxShadow: theme.shadows[1], 
-              border: `1px solid ${theme.palette.divider}` 
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <p style={{ fontSize: 12, fontWeight: 500, color: theme.palette.text.secondary }}>Completed</p>
-                  <p style={{ marginTop: 4, fontSize: 24, fontWeight: 700, color: theme.palette.success.main }}>
-                    {formatNumber(summary.completed_dispensings)}
-                  </p>
-                </div>
-                <TrendingUp style={{ color: theme.palette.success.main, width: 20, height: 20 }} />
-              </div>
-            </div>
-
-            <div style={{ 
-              background: theme.palette.background.paper, 
-              padding: 20, 
-              borderRadius: 12, 
-              boxShadow: theme.shadows[1], 
-              border: `1px solid ${theme.palette.divider}` 
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <p style={{ fontSize: 12, fontWeight: 500, color: theme.palette.text.secondary }}>Pending</p>
-                  <p style={{ marginTop: 4, fontSize: 24, fontWeight: 700, color: theme.palette.warning.main }}>
-                    {formatNumber(summary.pending_dispensings)}
-                  </p>
-                </div>
-                <Clock style={{ color: theme.palette.warning.main, width: 20, height: 20 }} />
-              </div>
-            </div>
-          </div>
-
-          {/* Charts Section */}
-          <div style={{ 
-            display: 'grid', 
-            gridTemplateColumns: '2fr 1fr', 
-            gap: 24, 
-            marginBottom: 32 
-          }}>
-            {/* Dispensing Trends Chart */}
-            <div style={{ 
-              background: theme.palette.background.paper, 
-              padding: 24, 
-              borderRadius: 16, 
-              boxShadow: theme.shadows[1], 
-              border: `1px solid ${theme.palette.divider}` 
-            }}>
-              <h3 style={{ 
-                fontSize: 18, 
-                fontWeight: 600, 
-                color: theme.palette.text.primary, 
-                marginBottom: 16 
-              }}>
-                Dispensing Trends
-              </h3>
-              <div style={{ height: 300 }}>
-                <Line data={dispensingTrendsData} options={chartOptions} />
-              </div>
-            </div>
-
-            {/* Top Products */}
-            <div style={{ 
-              background: theme.palette.background.paper, 
-              padding: 24, 
-              borderRadius: 16, 
-              boxShadow: theme.shadows[1], 
-              border: `1px solid ${theme.palette.divider}` 
-            }}>
-              <h3 style={{ 
-                fontSize: 18, 
-                fontWeight: 600, 
-                color: theme.palette.text.primary, 
-                marginBottom: 16 
-              }}>
-                Top Dispensing Products
-              </h3>
-              <div style={{ height: 300 }}>
-                <Doughnut data={topProductsData} options={doughnutOptions} />
-              </div>
-            </div>
-          </div>
-        </>
-      )}
-
       {/* Filters */}
-      <div style={{ 
-        background: theme.palette.background.paper, 
-        padding: 20, 
-        borderRadius: 12, 
-        boxShadow: theme.shadows[1], 
+      <div style={{
+        background: theme.palette.background.paper,
+        borderRadius: 12,
+        padding: 20,
+        marginBottom: 24,
         border: `1px solid ${theme.palette.divider}`,
-        marginBottom: 24
+        boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
       }}>
+        <div style={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          gap: 8, 
+          marginBottom: 16 
+        }}>
+          <Filter size={20} color={theme.palette.primary.main} />
+          <h3 style={{ 
+            fontSize: 16, 
+            fontWeight: 600, 
+            color: theme.palette.text.primary,
+            margin: 0
+          }}>
+            Filters
+          </h3>
+        </div>
+
         <div style={{ 
           display: 'grid', 
           gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', 
@@ -729,26 +821,27 @@ const DispensingReports: React.FC = () => {
               color: theme.palette.text.secondary,
               marginBottom: 8
             }}>
-              Search Dispensings
+              Search
             </label>
             <div style={{ position: 'relative' }}>
-              <Search style={{ 
-                position: 'absolute', 
-                left: 12, 
-                top: '50%', 
-                transform: 'translateY(-50%)',
-                color: theme.palette.text.secondary,
-                width: 16,
-                height: 16
-              }} />
+              <Search
+                size={16}
+                style={{
+                  position: 'absolute',
+                  left: 12,
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  color: theme.palette.text.secondary
+                }}
+              />
               <input
                 type="text"
+                placeholder="Search by ID, customer, or products..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Search by patient name, dispense ID, or products..."
                 style={{
                   width: '100%',
-                  padding: '8px 12px 8px 36px',
+                  padding: '8px 12px 8px 40px',
                   border: `1px solid ${theme.palette.divider}`,
                   borderRadius: 8,
                   fontSize: 14,
@@ -787,6 +880,7 @@ const DispensingReports: React.FC = () => {
               <option value="completed">Completed</option>
               <option value="pending">Pending</option>
               <option value="cancelled">Cancelled</option>
+              <option value="approved">Approved</option>
             </select>
           </div>
 
@@ -818,6 +912,70 @@ const DispensingReports: React.FC = () => {
               <option value="paid">Paid</option>
               <option value="pending">Pending</option>
               <option value="failed">Failed</option>
+            </select>
+          </div>
+
+          {/* Transaction Type Filter */}
+          <div>
+            <label style={{ 
+              display: 'block', 
+              fontSize: 12, 
+              fontWeight: 500, 
+              color: theme.palette.text.secondary,
+              marginBottom: 8
+            }}>
+              Transaction Type
+            </label>
+            <select
+              value={selectedTransactionType}
+              onChange={(e) => setSelectedTransactionType(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                border: `1px solid ${theme.palette.divider}`,
+                borderRadius: 8,
+                fontSize: 14,
+                background: theme.palette.background.default,
+                color: theme.palette.text.primary
+              }}
+            >
+              <option value="">All Types</option>
+              <option value="complex_dispensing">Complex Dispensing</option>
+              <option value="simple_dispensing">Simple Dispensing</option>
+              <option value="wholesale">Wholesale</option>
+            </select>
+          </div>
+
+          {/* Payment Method Filter */}
+          <div>
+            <label style={{ 
+              display: 'block', 
+              fontSize: 12, 
+              fontWeight: 500, 
+              color: theme.palette.text.secondary,
+              marginBottom: 8
+            }}>
+              Payment Method
+            </label>
+            <select
+              value={selectedPaymentMethod}
+              onChange={(e) => setSelectedPaymentMethod(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                border: `1px solid ${theme.palette.divider}`,
+                borderRadius: 8,
+                fontSize: 14,
+                background: theme.palette.background.default,
+                color: theme.palette.text.primary
+              }}
+            >
+              <option value="">All Methods</option>
+              <option value="cash">Cash</option>
+              <option value="card">Card</option>
+              <option value="mobile">Mobile Money</option>
+              <option value="bank_transfer">Bank Transfer</option>
+              <option value="cheque">Cheque</option>
             </select>
           </div>
 
@@ -881,101 +1039,136 @@ const DispensingReports: React.FC = () => {
                 setSearchTerm('');
                 setSelectedStatus('');
                 setSelectedPaymentStatus('');
-                setStartDate('');
-                setEndDate('');
+                setSelectedTransactionType('');
+                setSelectedPaymentMethod('');
+                setStartDate(new Date().toISOString().split('T')[0]);
+                setEndDate(new Date().toISOString().split('T')[0]);
               }}
               style={{
                 padding: '8px 16px',
-                background: theme.palette.grey[500],
-                color: theme.palette.grey[100],
-                border: 'none',
+                border: `1px solid ${theme.palette.error.main}`,
                 borderRadius: 8,
+                background: 'transparent',
+                color: theme.palette.error.main,
                 cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8
+                fontSize: 14,
+                fontWeight: 500
               }}
             >
-              <X style={{ width: 16, height: 16 }} />
               Clear Filters
             </button>
           </div>
         </div>
       </div>
 
-      {/* Dispensings Table */}
+      {/* Error Display */}
+      {error && (
+        <div style={{
+          background: theme.palette.error.light,
+          color: theme.palette.error.main,
+          padding: 12,
+          borderRadius: 8,
+          marginBottom: 16,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8
+        }}>
+          <AlertCircle size={16} />
+          {error}
+        </div>
+      )}
+
+      {/* Data Table */}
       <div style={{
         background: theme.palette.background.paper,
-        borderRadius: 16,
-        boxShadow: theme.shadows[1],
+        borderRadius: 12,
+        padding: 20,
         border: `1px solid ${theme.palette.divider}`,
-        overflow: 'hidden'
+        boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
       }}>
-        <DataTable
-          columns={columns}
-          data={filteredDispensings}
-          loading={loading}
-          emptyMessage="No dispensing records found. Try adjusting your filters."
-        />
-      </div>
-
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginTop: 24,
-          padding: 16,
-          background: theme.palette.background.paper,
-          borderRadius: 12,
-          boxShadow: theme.shadows[1],
-          border: `1px solid ${theme.palette.divider}`
+        <div style={{ 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'center', 
+          marginBottom: 16 
         }}>
-          <p style={{
-            fontSize: 14,
-            color: theme.palette.text.secondary,
+          <h3 style={{ 
+            fontSize: 18, 
+            fontWeight: 600, 
+            color: theme.palette.text.primary,
             margin: 0
           }}>
-            Showing {((currentPage - 1) * itemsPerPage) + 1} to {Math.min(currentPage * itemsPerPage, totalItems)} of {totalItems} dispensings
-          </p>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button
-              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-              disabled={currentPage === 1}
-              style={{
-                padding: '8px 12px',
-                background: currentPage === 1 ? theme.palette.grey[300] : theme.palette.primary.main,
-                color: currentPage === 1 ? theme.palette.grey[600] : theme.palette.primary.contrastText,
-                border: 'none',
-                borderRadius: 6,
-                cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 4
+            Dispensing Records ({filteredDispensings.length})
+          </h3>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <RefreshCw
+              size={16}
+              style={{ cursor: 'pointer', color: theme.palette.primary.main }}
+              onClick={fetchDispensingData}
+            />
+          </div>
+        </div>
+
+        {loading ? (
+          <div style={{ display: 'flex', justifyContent: 'center', padding: 40 }}>
+            <LoadingSpinner loading={true} message="Loading..." size={32} />
+          </div>
+        ) : filteredDispensings.length === 0 ? (
+          <div style={{
+            textAlign: 'center',
+            padding: 40,
+            color: theme.palette.text.secondary
+          }}>
+            <Pill size={48} style={{ opacity: 0.5, marginBottom: 16 }} />
+            <div style={{ fontSize: 16, fontWeight: 500, marginBottom: 8 }}>
+              No dispensing records found
+            </div>
+            <div style={{ fontSize: 14 }}>
+              Try adjusting your filters or search terms
+            </div>
+          </div>
+        ) : (
+          <>
+            <DataTable
+              data={filteredDispensings}
+              columns={columns}
+              loading={loading}
+              pagination={{
+                current_page: currentPage,
+                last_page: totalPages,
+                total: totalItems,
+                per_page: itemsPerPage,
+                onPageChange: setCurrentPage
               }}
-            >
-              <ChevronLeft style={{ width: 16, height: 16 }} />
-              Previous
-            </button>
-            <button
-              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-              disabled={currentPage === totalPages}
-              style={{
-                padding: '8px 12px',
-                background: currentPage === totalPages ? theme.palette.grey[300] : theme.palette.primary.main,
-                color: currentPage === totalPages ? theme.palette.grey[600] : theme.palette.primary.contrastText,
-                border: 'none',
-                borderRadius: 6,
-                cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 4
+              onPerPageChange={(newPerPage) => {
+                setItemsPerPage(newPerPage);
+                setCurrentPage(1);
               }}
-            >
-              Next
-              <ChevronRight style={{ width: 16, height: 16 }} />
-            </button>
+            />
+          </>
+        )}
+      </div>
+
+      {/* Charts Section */}
+      {summary && summary.dispensing_trends && summary.dispensing_trends.length > 0 && (
+        <div style={{
+          background: theme.palette.background.paper,
+          borderRadius: 12,
+          padding: 20,
+          marginTop: 24,
+          border: `1px solid ${theme.palette.divider}`,
+          boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+        }}>
+          <h3 style={{ 
+            fontSize: 18, 
+            fontWeight: 600, 
+            color: theme.palette.text.primary,
+            marginBottom: 20
+          }}>
+            Dispensing Trends
+          </h3>
+          <div style={{ height: 400 }}>
+            <Bar data={revenueChartData} options={chartOptions} />
           </div>
         </div>
       )}

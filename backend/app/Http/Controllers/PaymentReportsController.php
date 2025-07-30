@@ -7,6 +7,8 @@ use App\Models\PaymentApproval;
 use App\Models\PaymentDetails;
 use App\Models\Customer;
 use App\Models\User;
+use App\Models\Dispensed;
+use App\Models\WholesalePayment;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 
@@ -24,24 +26,29 @@ class PaymentReportsController extends Controller
             $sortBy = $request->input('sort_by', 'created_at');
             $sortOrder = $request->input('sort_order', 'desc');
 
-            $query = PaymentApproval::with(['customer', 'cart'])
+            // Primary query using payment_approval table (unified source)
+            $query = PaymentApproval::with(['customer', 'cart', 'creator', 'approver'])
                 ->select([
                     'Payment_ID as id',
                     'dispense_id',
                     'Patient_ID as customer_id',
+                    'transaction_ID',
                     'approved_amount as total_amount',
                     'approved_payment_method as payment_method',
                     'status',
                     'approved_at',
                     'created_at',
-                    'updated_at'
+                    'updated_at',
+                    'created_by',
+                    'approved_by'
                 ]);
 
             // Apply filters
             if ($search) {
-                $query->whereHas('customer', function($q) use ($search) {
-                    $q->where('name', 'like', "%{$search}%")
-                      ->orWhere('phone', 'like', "%{$search}%");
+                $query->where(function($q) use ($search) {
+                    $q->where('dispense_id', 'like', "%{$search}%")
+                      ->orWhere('transaction_ID', 'like', "%{$search}%")
+                      ->orWhere('Patient_ID', 'like', "%{$search}%");
                 });
             }
 
@@ -50,19 +57,70 @@ class PaymentReportsController extends Controller
             }
 
             if ($paymentMethod) {
-                $query->where('payment_method', $paymentMethod);
+                $query->where('approved_payment_method', $paymentMethod);
             }
 
             if ($startDate && $endDate) {
                 $query->whereBetween('approved_at', [$startDate . ' 00:00:00', $endDate . ' 23:59:59']);
             }
 
-            // Apply sorting
-            $query->orderBy($sortBy, $sortOrder);
+            // Apply sorting and pagination
+            $payments = $query->orderBy($sortBy, $sortOrder)->paginate($perPage);
 
-            $payments = $query->paginate($perPage);
+            // Transform the data to include customer info and transaction type
+            $transformedData = $payments->getCollection()->map(function ($payment) {
+                // Determine transaction type based on dispense_id pattern
+                $transactionType = 'complex_dispensing';
+                if (str_starts_with($payment->transaction_ID, 'SIMPLE-')) {
+                    $transactionType = 'simple_dispensing';
+                } elseif (str_starts_with($payment->dispense_id, 'WHOLESALE-')) {
+                    $transactionType = 'wholesale';
+                }
 
-            // Calculate summary statistics with the same filters
+                // Get customer info - match DispensingReportsController approach
+                $customerName = 'Passover Customer';
+                $customerPhone = 'N/A';
+                $customer = null;
+                
+                if ($payment->customer_id !== 'PASSOVER-CUSTOMER') {
+                    $customer = \App\Models\Patients::find($payment->customer_id);
+                    if ($customer) {
+                        $customerName = $customer->first_name && $customer->last_name 
+                            ? $customer->first_name . ' ' . $customer->last_name
+                            : ($customer->name || 'Unknown Customer');
+                        $customerPhone = $customer->phone || 'N/A';
+                    }
+                }
+
+                // Get approved by name
+                $approvedByName = 'Unknown';
+                if ($payment->approved_by) {
+                    $user = \App\Models\User::find($payment->approved_by);
+                    $approvedByName = $user ? ($user->first_name . ' ' . $user->last_name) : 'Unknown';
+                }
+
+                return [
+                    'id' => $payment->id,
+                    'dispense_id' => $payment->dispense_id,
+                    'customer_id' => $payment->customer_id,
+                    'total_amount' => $payment->total_amount,
+                    'payment_method' => $payment->payment_method,
+                    'status' => $payment->status,
+                    'approved_at' => $payment->approved_at,
+                    'created_at' => $payment->created_at,
+                    'updated_at' => $payment->updated_at,
+                    'transaction_type' => $transactionType,
+                    'patient_name' => $customerName,
+                    'patient_phone' => $customerPhone,
+                    'created_by' => $payment->created_by,
+                    'approved_by' => $payment->approved_by,
+                    'approved_by_name' => $approvedByName
+                ];
+            });
+
+            $payments->setCollection($transformedData);
+
+            // Calculate summary statistics from payment_approval table
             $summaryQuery = PaymentApproval::query();
             
             if ($startDate && $endDate) {
@@ -71,11 +129,15 @@ class PaymentReportsController extends Controller
 
             $summary = [
                 'total_payments' => $summaryQuery->count(),
-                'total_revenue' => $summaryQuery->clone()->where('status', 'Paid')->sum('approved_amount'),
-                'pending_payments' => $summaryQuery->clone()->where('status', 'Pending')->count(),
-                'approved_payments' => $summaryQuery->clone()->where('status', 'Paid')->count(),
-                'rejected_payments' => $summaryQuery->clone()->where('status', 'Rejected')->count(),
-                'payment_methods' => PaymentApproval::select('approved_payment_method')->distinct()->pluck('approved_payment_method')
+                'total_revenue' => $summaryQuery->where('status', 'Paid')->sum('approved_amount'),
+                'pending_payments' => $summaryQuery->where('status', 'Pending')->count(),
+                'approved_payments' => $summaryQuery->where('status', 'Paid')->count(),
+                'rejected_payments' => $summaryQuery->where('status', 'Rejected')->count(),
+                'payment_methods' => $summaryQuery->select('approved_payment_method')
+                    ->distinct()
+                    ->pluck('approved_payment_method')
+                    ->filter()
+                    ->values()
             ];
 
             return response()->json([
@@ -110,12 +172,12 @@ class PaymentReportsController extends Controller
             $endDate = $request->input('end_date', Carbon::now()->format('Y-m-d'));
 
             $query = PaymentApproval::where('status', 'Paid')
-                ->whereBetween('created_at', [$startDate, $endDate]);
+                ->whereBetween('approved_at', [$startDate, $endDate]);
 
             switch ($period) {
                 case 'daily':
                     $revenueData = $query->select(
-                        DB::raw('DATE(created_at) as period'),
+                        DB::raw('DATE(approved_at) as period'),
                         DB::raw('SUM(approved_amount) as revenue'),
                         DB::raw('COUNT(*) as transactions')
                     )
@@ -126,7 +188,7 @@ class PaymentReportsController extends Controller
 
                 case 'weekly':
                     $revenueData = $query->select(
-                        DB::raw('YEARWEEK(created_at) as period'),
+                        DB::raw('YEARWEEK(approved_at) as period'),
                         DB::raw('SUM(approved_amount) as revenue'),
                         DB::raw('COUNT(*) as transactions')
                     )
@@ -137,7 +199,7 @@ class PaymentReportsController extends Controller
 
                 case 'monthly':
                     $revenueData = $query->select(
-                        DB::raw('DATE_FORMAT(created_at, "%Y-%m") as period'),
+                        DB::raw('DATE_FORMAT(approved_at, "%Y-%m") as period'),
                         DB::raw('SUM(approved_amount) as revenue'),
                         DB::raw('COUNT(*) as transactions')
                     )
@@ -148,7 +210,7 @@ class PaymentReportsController extends Controller
 
                 case 'yearly':
                     $revenueData = $query->select(
-                        DB::raw('YEAR(created_at) as period'),
+                        DB::raw('YEAR(approved_at) as period'),
                         DB::raw('SUM(approved_amount) as revenue'),
                         DB::raw('COUNT(*) as transactions')
                     )
@@ -161,19 +223,19 @@ class PaymentReportsController extends Controller
                     $revenueData = collect();
             }
 
-            // Payment method breakdown
+            // Payment method breakdown from payment_approval
             $paymentMethodBreakdown = PaymentApproval::where('status', 'Paid')
-                ->whereBetween('created_at', [$startDate, $endDate])
+                ->whereBetween('approved_at', [$startDate, $endDate])
                 ->select('approved_payment_method')
                 ->selectRaw('SUM(approved_amount) as total_amount')
                 ->selectRaw('COUNT(*) as count')
                 ->groupBy('approved_payment_method')
                 ->get();
 
-            // Top customers
+            // Top customers from payment_approval
             $topCustomers = PaymentApproval::with('customer')
                 ->where('status', 'Paid')
-                ->whereBetween('created_at', [$startDate, $endDate])
+                ->whereBetween('approved_at', [$startDate, $endDate])
                 ->select('Patient_ID')
                 ->selectRaw('SUM(approved_amount) as total_spent')
                 ->selectRaw('COUNT(*) as transaction_count')

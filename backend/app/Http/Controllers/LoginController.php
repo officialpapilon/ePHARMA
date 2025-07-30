@@ -126,8 +126,8 @@ class LoginController extends Controller
                 ], 404);
             }
 
-            // Generate reset token
-            $resetToken = Str::random(64);
+            // Generate 6-digit numeric reset token
+            $resetToken = str_pad(rand(0, 999999), 6, '0', STR_PAD_LEFT);
             $expiresAt = now()->addMinutes(30); // Token expires in 30 minutes
 
             // Store reset token in database
