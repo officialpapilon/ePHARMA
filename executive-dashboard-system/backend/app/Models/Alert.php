@@ -5,14 +5,19 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-class Branch extends Model
+class Alert extends Model
 {
     use HasFactory;
 
     protected $fillable = [
-        'name',
-        'location',
-        'status',
-        'employee_count'
+        'type',
+        'title',
+        'message',
+        'severity',
+        'is_read'
+    ];
+
+    protected $casts = [
+        'is_read' => 'boolean'
     ];
 } 

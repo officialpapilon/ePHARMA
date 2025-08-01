@@ -35,7 +35,14 @@ use App\Http\Controllers\StockReceivingController;
 use App\Http\Controllers\FinancialAuditController;
 use App\Models\Branch;
 
-
+// Test endpoint for mobile app
+Route::get('/test', function () {
+    return response()->json([
+        'success' => true,
+        'message' => 'API is working!',
+        'timestamp' => now(),
+    ]);
+});
 
 Route::post('/login', [LoginController::class, 'login'])->middleware('guest:sanctum');
 
@@ -44,14 +51,30 @@ Route::post('/forgot-password', [LoginController::class, 'forgotPassword']);
 Route::post('/reset-password', [LoginController::class, 'resetPassword']);
 Route::post('/verify-reset-token', [LoginController::class, 'verifyResetToken']);
 
+
+
 Route::middleware('auth')->group(function () {
     
-
     
+  
     Route::get('/user', [LoginController::class, 'me']);
     Route::post('/logout', function (Request $request) {
         $request->user()->currentAccessToken()->delete();
         return response()->json(['message' => 'Logged out successfully'], 200);
+    });
+    
+    // Get all users for user management
+    Route::get('/users', function (Request $request) {
+        $users = \App\Models\User::select([
+            'id', 'first_name', 'last_name', 'phone_number', 'address', 'position', 
+            'email', 'username', 'status', 'belonged_branches', 'created_at', 
+            'updated_at', 'last_login_device', 'last_login_at', 'last_login_ip'
+        ])->get();
+        
+        return response()->json([
+            'success' => true,
+            'data' => $users
+        ]);
     });
     
     /**
