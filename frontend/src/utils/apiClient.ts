@@ -5,13 +5,14 @@ export const apiClient = {
   async fetch(url: string, options: RequestInit = {}) {
     const token = localStorage.getItem('token');
     
-    const headers = {
+    const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
-      ...options.headers,
+      ...options.headers as Record<string, string>,
     };
 
-    if (token) {
+    // Only add Authorization header if token exists and URL is not a public endpoint
+    if (token && !url.includes('/wholesale/')) {
       headers['Authorization'] = `Bearer ${token}`;
     }
 
@@ -20,8 +21,8 @@ export const apiClient = {
       headers,
     });
 
-    // Handle 401 Unauthorized responses
-    if (response.status === 401) {
+    // Handle 401 Unauthorized responses only for protected endpoints
+    if (response.status === 401 && !url.includes('/wholesale/')) {
       // Clear authentication data
       localStorage.removeItem('token');
       localStorage.removeItem('user');
@@ -33,14 +34,16 @@ export const apiClient = {
       throw new Error('Unauthorized - Please log in again');
     }
 
-    return response;
+    // Parse JSON response
+    const data = await response.json();
+    return data;
   },
 
   async get(url: string, options: RequestInit = {}) {
     return this.fetch(url, { ...options, method: 'GET' });
   },
 
-  async post(url: string, data: any, options: RequestInit = {}) {
+  async post(url: string, data: unknown, options: RequestInit = {}) {
     return this.fetch(url, {
       ...options,
       method: 'POST',
@@ -48,7 +51,7 @@ export const apiClient = {
     });
   },
 
-  async put(url: string, data: any, options: RequestInit = {}) {
+  async put(url: string, data: unknown, options: RequestInit = {}) {
     return this.fetch(url, {
       ...options,
       method: 'PUT',

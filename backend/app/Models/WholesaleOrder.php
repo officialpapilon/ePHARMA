@@ -5,7 +5,6 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
-use Carbon\Carbon;
 
 class WholesaleOrder extends Model
 {
@@ -15,7 +14,6 @@ class WholesaleOrder extends Model
         'order_number',
         'customer_id',
         'created_by',
-        'assigned_delivery_person_id',
         'order_type',
         'status',
         'payment_status',
@@ -31,46 +29,38 @@ class WholesaleOrder extends Model
         'balance_amount',
         'order_date',
         'expected_delivery_date',
-        'actual_delivery_date',
         'due_date',
         'notes',
         'delivery_instructions',
-        'invoice_number',
-        'delivery_note_number',
-        'is_invoiced',
-        'is_delivered',
-        'is_payment_processed',
-        'is_delivery_scheduled',
-        'is_delivery_note_generated',
-        'inventory_reserved',
-        'inventory_deducted',
         'delivery_address',
         'delivery_contact_person',
         'delivery_contact_phone',
+        'inventory_reserved',
+        'inventory_deducted',
     ];
 
     protected $casts = [
-        'subtotal' => 'decimal:2',
-        'tax_amount' => 'decimal:2',
-        'discount_amount' => 'decimal:2',
-        'shipping_amount' => 'decimal:2',
-        'total_amount' => 'decimal:2',
-        'paid_amount' => 'decimal:2',
-        'balance_amount' => 'decimal:2',
-        'order_date' => 'date',
-        'expected_delivery_date' => 'date',
-        'actual_delivery_date' => 'date',
-        'due_date' => 'date',
-        'is_invoiced' => 'boolean',
-        'is_delivered' => 'boolean',
-        'is_payment_processed' => 'boolean',
-        'is_delivery_scheduled' => 'boolean',
-        'is_delivery_note_generated' => 'boolean',
+        'order_date' => 'datetime',
+        'expected_delivery_date' => 'datetime',
+        'due_date' => 'datetime',
         'inventory_reserved' => 'boolean',
         'inventory_deducted' => 'boolean',
     ];
 
-    // Relationships
+    // Workflow statuses
+    const STATUS_PENDING_PAYMENT = 'pending_payment';
+    const STATUS_CONFIRMED = 'confirmed';
+    const STATUS_PROCESSING = 'processing';
+    const STATUS_READY_FOR_DELIVERY = 'ready_for_delivery';
+    const STATUS_DELIVERED = 'delivered';
+    const STATUS_CANCELLED = 'cancelled';
+
+    // Payment statuses
+    const PAYMENT_STATUS_PENDING = 'pending';
+    const PAYMENT_STATUS_PAID = 'paid';
+    const PAYMENT_STATUS_PARTIAL = 'partial';
+    const PAYMENT_STATUS_OVERDUE = 'overdue';
+
     public function customer()
     {
         return $this->belongsTo(WholesaleCustomer::class, 'customer_id');
@@ -96,214 +86,92 @@ class WholesaleOrder extends Model
         return $this->hasMany(WholesaleDelivery::class, 'order_id');
     }
 
-    public function deliveryPerson()
+    // Scopes for workflow
+    public function scopePendingPayment($query)
     {
-        return $this->belongsTo(User::class, 'assigned_delivery_person_id');
+        return $query->where('status', self::STATUS_PENDING_PAYMENT);
     }
 
-    /**
-     * Reserve inventory for this order
-     */
-    public function reserveInventory()
+    public function scopeConfirmed($query)
     {
-        if (!$this->inventory_reserved) {
-            foreach ($this->items as $item) {
-                $cacheItem = MedicinesCache::where('product_id', $item->product_id)
-                    ->where('batch_no', $item->batch_no)
-                    ->first();
-                
-                if ($cacheItem && $cacheItem->current_quantity >= $item->quantity_ordered) {
-                    $cacheItem->decrement('current_quantity', $item->quantity_ordered);
-                }
-            }
-            $this->update(['inventory_reserved' => true]);
-        }
+        return $query->where('status', self::STATUS_CONFIRMED);
     }
 
-    /**
-     * Release reserved inventory
-     */
-    public function releaseInventory()
+    public function scopeProcessing($query)
     {
-        if ($this->inventory_reserved && !$this->inventory_deducted) {
-            foreach ($this->items as $item) {
-                $cacheItem = MedicinesCache::where('product_id', $item->product_id)
-                    ->where('batch_no', $item->batch_no)
-                    ->first();
-                
-                if ($cacheItem) {
-                    $cacheItem->increment('current_quantity', $item->quantity_ordered);
-                }
-            }
-            $this->update(['inventory_reserved' => false]);
-        }
+        return $query->where('status', self::STATUS_PROCESSING);
     }
 
-    /**
-     * Deduct inventory after payment
-     */
-    public function deductInventory()
+    public function scopeReadyForDelivery($query)
     {
-        if ($this->inventory_reserved && !$this->inventory_deducted) {
-            $this->update(['inventory_deducted' => true]);
-        }
+        return $query->where('status', self::STATUS_READY_FOR_DELIVERY);
     }
 
-    /**
-     * Generate delivery note number
-     */
-    public function generateDeliveryNoteNumber()
+    public function scopeDelivered($query)
     {
-        if (!$this->delivery_note_number) {
-            $this->update([
-                'delivery_note_number' => 'DN-' . date('Y') . '-' . str_pad(rand(1, 9999), 4, '0', STR_PAD_LEFT),
-                'is_delivery_note_generated' => true
-            ]);
-        }
-        return $this->delivery_note_number;
-    }
-
-    // Scopes
-    public function scopeByStatus($query, $status)
-    {
-        return $query->where('status', $status);
-    }
-
-    public function scopeByPaymentStatus($query, $status)
-    {
-        return $query->where('payment_status', $status);
-    }
-
-    public function scopeByDateRange($query, $startDate, $endDate)
-    {
-        return $query->whereBetween('order_date', [$startDate, $endDate]);
+        return $query->where('status', self::STATUS_DELIVERED);
     }
 
     public function scopeOverdue($query)
     {
-        return $query->where('due_date', '<', Carbon::today())
-                    ->where('payment_status', '!=', 'paid');
+        return $query->where('due_date', '<', now())
+            ->where('payment_status', '!=', self::PAYMENT_STATUS_PAID);
     }
 
-    // Methods
-    public function calculateTotals()
+    // Workflow methods
+    public function canProcessPayment()
     {
-        $subtotal = $this->items->sum('total');
-        $taxAmount = $this->items->sum('tax_amount');
-        $discountAmount = $this->items->sum('discount_amount');
-        
-        $this->subtotal = $subtotal;
-        $this->tax_amount = $taxAmount;
-        $this->discount_amount = $discountAmount;
-        $this->total_amount = $subtotal + $taxAmount - $discountAmount + $this->shipping_amount;
-        $this->balance_amount = $this->total_amount - $this->paid_amount;
-        
+        return $this->status === self::STATUS_PENDING_PAYMENT && 
+               $this->payment_status === self::PAYMENT_STATUS_PENDING;
+    }
+
+    public function canScheduleDelivery()
+    {
+        return $this->status === self::STATUS_CONFIRMED && 
+               $this->payment_status === self::PAYMENT_STATUS_PAID;
+    }
+
+    public function canCompleteDelivery()
+    {
+        return $this->status === self::STATUS_READY_FOR_DELIVERY;
+    }
+
+    public function processPayment()
+    {
+        if (!$this->canProcessPayment()) {
+            throw new \Exception('Order cannot be processed for payment');
+        }
+
+        $this->payment_status = self::PAYMENT_STATUS_PAID;
+        $this->paid_amount = $this->total_amount;
+        $this->balance_amount = 0;
+        $this->status = self::STATUS_CONFIRMED;
         $this->save();
+
+        return $this;
     }
 
-    public function updatePaymentStatus()
+    public function scheduleDelivery()
     {
-        if ($this->paid_amount >= $this->total_amount) {
-            $this->payment_status = 'paid';
-        } elseif ($this->paid_amount > 0) {
-            $this->payment_status = 'partial';
-        } else {
-            $this->payment_status = 'pending';
+        if (!$this->canScheduleDelivery()) {
+            throw new \Exception('Order cannot be scheduled for delivery');
         }
 
-        if ($this->due_date && Carbon::today()->gt($this->due_date) && $this->payment_status !== 'paid') {
-            $this->payment_status = 'overdue';
-        }
-
+        $this->status = self::STATUS_READY_FOR_DELIVERY;
         $this->save();
+
+        return $this;
     }
 
-    public function canBeDelivered()
+    public function completeDelivery()
     {
-        return in_array($this->status, ['confirmed', 'processing', 'ready_for_delivery']) &&
-               ($this->payment_status === 'paid' || $this->payment_terms === 'pay_later');
-    }
-
-    public function canBeCancelled()
-    {
-        return in_array($this->status, ['draft', 'confirmed', 'processing']) &&
-               $this->payment_status !== 'paid';
-    }
-
-    public function isOverdue()
-    {
-        return $this->due_date && $this->due_date < Carbon::today() && $this->payment_status !== 'paid';
-    }
-
-    public function getDaysOverdueAttribute()
-    {
-        if (!$this->isOverdue()) {
-            return 0;
+        if (!$this->canCompleteDelivery()) {
+            throw new \Exception('Order cannot be completed');
         }
-        return Carbon::today()->diffInDays($this->due_date);
-    }
 
-    // New methods for enhanced flow
-    public function canBeProcessedForPayment()
-    {
-        return in_array($this->status, ['confirmed', 'processing']) && 
-               !$this->is_payment_processed;
-    }
+        $this->status = self::STATUS_DELIVERED;
+        $this->save();
 
-    public function canBeScheduledForDelivery()
-    {
-        return ($this->payment_status === 'paid' || $this->payment_terms === 'pay_later') &&
-               $this->delivery_type === 'delivery' &&
-               !$this->is_delivery_scheduled;
+        return $this;
     }
-
-    public function isReadyForDelivery()
-    {
-        return $this->status === 'ready_for_delivery' && 
-               $this->delivery_type === 'delivery';
-    }
-
-    public function markAsPaymentProcessed()
-    {
-        $this->update(['is_payment_processed' => true]);
-    }
-
-    public function markAsDeliveryScheduled()
-    {
-        $this->update(['is_delivery_scheduled' => true]);
-    }
-
-    public function generateInvoiceNumber()
-    {
-        $prefix = 'INV';
-        $year = date('Y');
-        $month = date('m');
-        $lastInvoice = self::where('invoice_number', 'like', "{$prefix}{$year}{$month}%")
-                           ->orderBy('invoice_number', 'desc')
-                           ->first();
-        
-        if ($lastInvoice) {
-            $lastNumber = intval(substr($lastInvoice->invoice_number, -4));
-            $newNumber = $lastNumber + 1;
-        } else {
-            $newNumber = 1;
-        }
-        
-        return $prefix . $year . $month . str_pad($newNumber, 4, '0', STR_PAD_LEFT);
-    }
-
-    // Boot method to generate order number
-    protected static function boot()
-    {
-        parent::boot();
-
-        static::creating(function ($order) {
-            if (empty($order->order_number)) {
-                $order->order_number = 'ORD-' . date('Y') . '-' . str_pad(static::count() + 1, 4, '0', STR_PAD_LEFT);
-            }
-            if (empty($order->order_date)) {
-                $order->order_date = Carbon::today();
-            }
-        });
-    }
-}
+} 

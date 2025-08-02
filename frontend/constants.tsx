@@ -35,7 +35,7 @@ export const reportErrors = (
       case 403:
         {
           const data = errorBody.response.data;
-          if (data?.error) {
+          if (data?.error && typeof data.error === 'string') {
             message = data.error;
           } else {
             message = "You don't have permission to perform this action.";
@@ -50,7 +50,7 @@ export const reportErrors = (
       case 422:
         {
           const data = errorBody.response.data;
-          if (data?.error) {
+          if (data?.error && typeof data.error === 'string') {
             message = data.error;
           } else {
             const errors: string[] = [];

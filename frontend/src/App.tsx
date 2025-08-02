@@ -68,19 +68,13 @@ const TestComponent = React.lazy(() => import('./pages/store/TestComponent'));
 const ReceivingStock = React.lazy(() => import('./pages/store/ReceivingStock'));
 const StockTakingReport = React.lazy(() => import('./pages/store/StockTakingReport'));
 const StoreReports = React.lazy(() => import('./pages/store/StoreReports'));
-const WholesaleStockTaking = React.lazy(() => import('./pages/wholesale/StockTaking'));
-const Pos = React.lazy(() => import("./pages/wholesale/Pos"));
-const Orders = React.lazy(() => import("./pages/wholesale/Orders"));
-const Customers = React.lazy(() => import("./pages/wholesale/Customers"));
-const Deliveries = React.lazy(() => import("./pages/wholesale/Deliveries"));
-const Payments = React.lazy(() => import("./pages/wholesale/Payments"));
-const ItemsManager = React.lazy(() => import("./pages/wholesale/ItemsManager"));
-const StockAdjustment = React.lazy(() => import("./pages/wholesale/StockAdjustment"));
-const Report = React.lazy(() => import("./pages/wholesale/Report"));
 const WholesaleLayout = React.lazy(() => import("./pages/wholesale/WholesaleLayout"));
 const WholesaleDashboard = React.lazy(() => import("./pages/wholesale/WholesaleDashboard"));
-const Workflow = React.lazy(() => import("./pages/wholesale/Workflow"));
-const DeliveryManagement = React.lazy(() => import("./pages/wholesale/DeliveryManagement"));
+const Pos = React.lazy(() => import("./pages/wholesale/Pos"));
+const Orders = React.lazy(() => import("./pages/wholesale/Orders"));
+const Deliveries = React.lazy(() => import("./pages/wholesale/Deliveries"));
+const Customers = React.lazy(() => import("./pages/wholesale/Customers"));
+const Reports = React.lazy(() => import("./pages/wholesale/Reports"));
 
 // PrivateRoute component
 const PrivateRoute: React.FC<{ element: JSX.Element }> = ({ element }) => {
@@ -137,15 +131,9 @@ const App: React.FC = () => (
                     <Route index element={<WholesaleDashboard />} />
                     <Route path="pos" element={<Pos />} />
                     <Route path="orders" element={<Orders />} />
-                    <Route path="customers" element={<Customers />} />
                     <Route path="deliveries" element={<Deliveries />} />
-                    <Route path="payments" element={<Payments />} />
-                    <Route path="items-manager" element={<ItemsManager />} />
-                    <Route path="stock-adjustment" element={<StockAdjustment />} />
-                    <Route path="report" element={<Report />} />
-                    <Route path="stock-taking" element={<WholesaleStockTaking />} />
-                    <Route path="workflow" element={<Workflow />} />
-                    <Route path="delivery-management" element={<DeliveryManagement />} />
+                    <Route path="customers" element={<Customers />} />
+                    <Route path="reports" element={<Reports />} />
                   </Route>
 
                   <Route path="/management/*" element={<PrivateRoute element={<ManagementLayout />} />}>

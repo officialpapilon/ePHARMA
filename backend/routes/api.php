@@ -330,59 +330,28 @@ Route::middleware(['auth:sanctum'])->group(function () {
 // ============================================================================
 
 Route::prefix('wholesale')->group(function () {
-    // POS Routes
-    Route::post('/pos/process-payment', [App\Http\Controllers\WholesaleOrderController::class, 'store']);
+    // Dashboard
+    Route::get('/dashboard', [App\Http\Controllers\WholesaleController::class, 'dashboard']);
     
-    // Product Routes
-    Route::get('/products', [App\Http\Controllers\WholesaleProductController::class, 'index']);
-    Route::get('/products/categories', [App\Http\Controllers\WholesaleProductController::class, 'categories']);
-    Route::get('/products/search', [App\Http\Controllers\WholesaleOrderController::class, 'searchProducts']);
+    // Products and Customers
+    Route::get('/products', [App\Http\Controllers\WholesaleController::class, 'getProducts']);
+    Route::get('/customers', [App\Http\Controllers\WholesaleController::class, 'getCustomers']);
+    Route::get('/reports', [App\Http\Controllers\WholesaleController::class, 'getReports']);
     
-    // Order Routes
-    Route::get('/orders', [App\Http\Controllers\WholesaleOrderController::class, 'index']);
-    Route::post('/orders', [App\Http\Controllers\WholesaleOrderController::class, 'store']);
-    Route::get('/orders/{id}', [App\Http\Controllers\WholesaleOrderController::class, 'show']);
-    Route::put('/orders/{id}', [App\Http\Controllers\WholesaleOrderController::class, 'update']);
-    Route::delete('/orders/{id}', [App\Http\Controllers\WholesaleOrderController::class, 'destroy']);
-    Route::post('/orders/{id}/cancel', [App\Http\Controllers\WholesaleDeliveryController::class, 'cancelOrder']);
-    
-    // Payment Routes
-    Route::get('/payments', [App\Http\Controllers\WholesalePaymentController::class, 'index']);
-    Route::post('/payments', [App\Http\Controllers\WholesalePaymentController::class, 'store']);
-    Route::post('/orders/{orderId}/process-payment', [App\Http\Controllers\WholesalePaymentController::class, 'processPayment']);
-    Route::get('/payments/{id}', [App\Http\Controllers\WholesalePaymentController::class, 'show']);
-    Route::put('/payments/{id}', [App\Http\Controllers\WholesalePaymentController::class, 'update']);
-    Route::delete('/payments/{id}', [App\Http\Controllers\WholesalePaymentController::class, 'destroy']);
-    Route::post('/payments/{id}/receipt', [App\Http\Controllers\WholesalePaymentController::class, 'generateReceipt']);
-    Route::post('/payments/{id}/complete', [App\Http\Controllers\WholesalePaymentController::class, 'markCompleted']);
-    Route::post('/payments/{id}/fail', [App\Http\Controllers\WholesalePaymentController::class, 'markFailed']);
-    Route::post('/payments/{id}/refund', [App\Http\Controllers\WholesalePaymentController::class, 'markRefunded']);
-    
-    // Delivery Routes
-    Route::get('/deliveries', [App\Http\Controllers\WholesaleDeliveryController::class, 'index']);
-    Route::post('/deliveries', [App\Http\Controllers\WholesaleDeliveryController::class, 'store']);
-    Route::post('/orders/{orderId}/fulfill', [App\Http\Controllers\WholesaleDeliveryController::class, 'fulfillOrder']);
-    Route::post('/orders/{orderId}/assign-delivery', [App\Http\Controllers\WholesaleDeliveryController::class, 'assignDelivery']);
-    Route::post('/orders/{orderId}/update-delivery-status', [App\Http\Controllers\WholesaleDeliveryController::class, 'updateDeliveryStatus']);
-    Route::post('/orders/{orderId}/create-delivery', [App\Http\Controllers\WholesaleDeliveryController::class, 'createFromOrder']);
-    Route::post('/deliveries/{deliveryId}/approve', [App\Http\Controllers\WholesaleDeliveryController::class, 'approveDelivery']);
-    Route::get('/deliveries/{id}', [App\Http\Controllers\WholesaleDeliveryController::class, 'show']);
-    Route::put('/deliveries/{id}', [App\Http\Controllers\WholesaleDeliveryController::class, 'update']);
-    Route::delete('/deliveries/{id}', [App\Http\Controllers\WholesaleDeliveryController::class, 'destroy']);
-    
-    // Customer Routes
-    Route::get('/customers', [App\Http\Controllers\WholesaleCustomerController::class, 'index']);
-    Route::post('/customers', [App\Http\Controllers\WholesaleCustomerController::class, 'store']);
-    Route::get('/customers/{id}', [App\Http\Controllers\WholesaleCustomerController::class, 'show']);
-    Route::put('/customers/{id}', [App\Http\Controllers\WholesaleCustomerController::class, 'update']);
-    Route::delete('/customers/{id}', [App\Http\Controllers\WholesaleCustomerController::class, 'destroy']);
-    
-    // Report Routes
-    Route::get('/reports/dashboard', [App\Http\Controllers\WholesaleReportController::class, 'dashboard']);
-    Route::get('/reports/orders', [App\Http\Controllers\WholesaleReportController::class, 'orders']);
-    Route::get('/reports/payments', [App\Http\Controllers\WholesaleReportController::class, 'payments']);
-    Route::get('/reports/deliveries', [App\Http\Controllers\WholesaleReportController::class, 'deliveries']);
-    Route::get('/reports/top-products', [App\Http\Controllers\WholesaleReportController::class, 'topProducts']);
+    // Orders
+    Route::get('/orders', [App\Http\Controllers\WholesaleController::class, 'getOrders']);
+    Route::post('/create-order', [App\Http\Controllers\WholesaleController::class, 'createOrder']);
+    Route::post('/orders/{id}/process-payment', [App\Http\Controllers\WholesaleController::class, 'processPayment']);
+    Route::post('/orders/{id}/schedule-delivery', [App\Http\Controllers\WholesaleController::class, 'scheduleDelivery']);
+    Route::post('/orders/{id}/complete-delivery', [App\Http\Controllers\WholesaleController::class, 'completeDelivery']);
+    Route::get('/deliveries', [App\Http\Controllers\WholesaleController::class, 'getDeliveries']);
+    Route::post('/deliveries/{id}/complete', [App\Http\Controllers\WholesaleController::class, 'completeDeliveryWithDetails']);
+    Route::post('/deliveries/{id}/generate-note', [App\Http\Controllers\WholesaleController::class, 'generateDeliveryNote']);
+    Route::post('/customers', [App\Http\Controllers\WholesaleController::class, 'createCustomer']);
+    Route::put('/customers/{id}', [App\Http\Controllers\WholesaleController::class, 'updateCustomer']);
+    Route::post('/customers/{id}/deactivate', [App\Http\Controllers\WholesaleController::class, 'deactivateCustomer']);
+    Route::get('/customers/{id}/transactions', [App\Http\Controllers\WholesaleController::class, 'getCustomerTransactions']);
+    Route::post('/customers/{id}/clear-debt', [App\Http\Controllers\WholesaleController::class, 'clearCustomerDebt']);
 });
 
 // ============================================================================

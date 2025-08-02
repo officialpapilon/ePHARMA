@@ -22,8 +22,8 @@ export function useApi<T>(
     setError(null);
     
     try {
-      const response = await apiClient.get<ApiResponse<T>>(endpoint, { params });
-      setData(response.data.data);
+      const response = await apiClient.get(endpoint, { params });
+      setData(response.data);
     } catch (err: any) {
       setError(err.message || 'An error occurred');
     } finally {
@@ -41,17 +41,17 @@ export function useApi<T>(
       
       switch (method) {
         case 'POST':
-          response = await apiClient.post<ApiResponse<T>>(url, data);
+          response = await apiClient.post(url, data);
           break;
         case 'PUT':
-          response = await apiClient.put<ApiResponse<T>>(url, data);
+          response = await apiClient.put(url, data);
           break;
         case 'DELETE':
-          response = await apiClient.delete<ApiResponse<T>>(url);
+          response = await apiClient.delete(url);
           break;
       }
       
-      return response.data;
+      return response;
     } catch (err: any) {
       setError(err.message || 'An error occurred');
       throw err;
@@ -102,7 +102,7 @@ export function useApiCall() {
           throw new Error(`Unsupported HTTP method: ${method}`);
       }
       
-      return response.data;
+      return response;
     } catch (error: any) {
       throw error;
     }
@@ -133,10 +133,10 @@ export function usePaginatedApi<T>(
     const params = { ...filters, ...newFilters };
     
     try {
-      const response = await apiClient.get<ApiResponse<T[]>>(endpoint, { params });
-      setData(response.data.data);
-      if (response.data.meta) {
-        setPagination(response.data.meta);
+      const response = await apiClient.get(endpoint, { params });
+      setData(response.data);
+      if (response.meta) {
+        setPagination(response.meta);
       }
     } catch (err: any) {
       setError(err.message || 'An error occurred');

@@ -1,19 +1,19 @@
 import React from 'react';
 import { Box, Typography, Paper } from '@mui/material';
 
-const Payments: React.FC = () => {
+const Inventory: React.FC = () => {
   return (
     <Box sx={{ p: 3 }}>
       <Typography variant="h4" component="h1" gutterBottom>
-        Payments
+        Inventory
       </Typography>
       <Paper sx={{ p: 3 }}>
         <Typography variant="body1">
-          Payments management coming soon...
+          Inventory management coming soon...
         </Typography>
       </Paper>
     </Box>
   );
 };
 
-export default Payments; 
+export default Inventory; 

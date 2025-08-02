@@ -3,570 +3,590 @@ import {
   Box,
   Typography,
   Paper,
+  Grid,
+  Card,
+  CardContent,
   Button,
   TextField,
-  Select,
   FormControl,
   InputLabel,
+  Select,
   MenuItem,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
   IconButton,
-  Chip,
   Alert,
-  Divider,
-  List,
-  ListItem,
-  ListItemText,
+  Chip,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from '@mui/material';
 import {
   Add as AddIcon,
   Remove as RemoveIcon,
   Delete as DeleteIcon,
   ShoppingCart as CartIcon,
-  Person as PersonIcon,
+  Payment as PaymentIcon,
   Search as SearchIcon,
-  CheckCircle as CheckCircleIcon,
 } from '@mui/icons-material';
-import { API_BASE_URL } from '../../../constants';
-import { wholesaleOrdersApi } from '../../services/wholesaleService';
+import { DatePicker } from '@mui/x-date-pickers/DatePicker';
+import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
+import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
+import { useApiCall } from '../../hooks/useApi';
+import { useNotification } from '../../hooks/useNotification';
 import LoadingSpinner from '../../components/common/LoadingSpinner/LoadingSpinner';
-
-interface Customer {
-  id: number;
-  customer_code: string;
-  business_name: string;
-  contact_person: string;
-  phone_number: string;
-  email: string;
-  address: string;
-  city: string;
-  state: string;
-  customer_type: string;
-  credit_limit: string;
-  current_balance: string;
-  payment_terms: string;
-  status: string;
-}
+import { formatCurrency } from '../../utils/formatters';
 
 interface Product {
   id: string;
   product_id: string;
   product_name: string;
+  product_category: string;
   current_quantity: number;
   product_price: number;
-  product_category: string;
-  product_unit: string;
   batch_no: string;
+}
+
+interface Customer {
+  id: number;
+  business_name: string;
+  contact_person: string;
+  phone_number: string;
 }
 
 interface CartItem {
-  id: string;
-  productId: string;
-  name: string;
+  product_id: string;
+  product_name: string;
   quantity: number;
-  price: number;
-  unit: string;
-  batch_no: string;
+  unit_price: number;
+  total: number;
 }
 
-interface ApiProductItem {
-  id?: string | number;
-  product_id?: string | number;
-  product_name?: string;
-  current_quantity?: string | number;
-  product_price?: string | number;
-  product_category?: string;
-  product_unit?: string;
-  batch_no?: string;
-}
-
-const Pos = () => {
-  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+const Pos: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
-  const [cart, setCart] = useState<CartItem[]>([]);
-  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-  const [quantity, setQuantity] = useState(1);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [productSearchTerm, setProductSearchTerm] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
-  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'mobile_money' | 'card'>('cash');
-  const [taxRate] = useState(7); // 7% tax rate
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [cart, setCart] = useState<CartItem[]>([]);
+  const [selectedCustomer, setSelectedCustomer] = useState<number | ''>('');
+  const [paymentMethod, setPaymentMethod] = useState('cash');
+  const [deliveryType, setDeliveryType] = useState('delivery');
+  const [expectedDeliveryDate, setExpectedDeliveryDate] = useState<Date | null>(new Date());
+  const [notes, setNotes] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [showCustomerDialog, setShowCustomerDialog] = useState(false);
+  const [showAddCustomerModal, setShowAddCustomerModal] = useState(false);
+  const [newCustomer, setNewCustomer] = useState({
+    business_name: '',
+    contact_person: '',
+    phone_number: '',
+    email: '',
+    address: '',
+    city: '',
+    customer_type: 'pharmacy' as const,
+    credit_limit_type: 'limited' as const,
+    credit_limit: 1000000,
+    payment_terms: 'immediate' as const,
+    status: 'active' as const
+  });
+
+  const { apiCall } = useApiCall();
+  const { showSuccess, showError } = useNotification();
 
   useEffect(() => {
-    fetchCustomers();
-    fetchProducts();
+    fetchData();
   }, []);
 
-  const fetchCustomers = async () => {
+  const fetchData = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('token');
-      if (!token) throw new Error('No authentication token found');
-
-      const response = await fetch(`${API_BASE_URL}/api/wholesale/customers`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'ngrok-skip-browser-warning': 'true',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to fetch customers: ${response.status}`);
-      }
-
-      const result = await response.json();
+      console.log('Fetching POS data...');
       
-      if (result.success && Array.isArray(result.data)) {
-        setCustomers(result.data);
-      } else {
-        setError('Failed to fetch customers');
+      const [productsResponse, customersResponse] = await Promise.all([
+        apiCall('/api/wholesale/products'),
+        apiCall('/api/wholesale/customers'),
+        apiCall('/api/wholesale/customers', {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json'
+          }
+        })
+      ]);
+
+      console.log('Products response:', productsResponse);
+      console.log('Customers response:', customersResponse);
+
+      if (productsResponse.success) {
+        setProducts(productsResponse.data || []);
       }
-    } catch (err) {
-      console.error('Fetch customers error:', err);
-      setError('Failed to fetch customers');
+
+      if (customersResponse.success) {
+        setCustomers(customersResponse.data || []);
+      }
+    } catch (error) {
+      console.error('POS fetch error:', error);
+      showError('Failed to fetch data');
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchProducts = async () => {
-    try {
-      setLoading(true);
-      const token = localStorage.getItem('token');
-      if (!token) throw new Error('No authentication token found');
-
-      const response = await fetch(`${API_BASE_URL}/api/wholesale/products`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'ngrok-skip-browser-warning': 'true',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to fetch products: ${response.status}`);
-      }
-
-      const result = await response.json();
-      
-      if (result.success && Array.isArray(result.data)) {
-        const mappedProducts = result.data.map((item: ApiProductItem) => ({
-          id: (item.id?.toString() || item.product_id?.toString()) || '',
-          product_id: item.product_id?.toString() || '',
-          product_name: item.product_name || 'Unknown Product',
-          current_quantity: parseInt(item.current_quantity as string) || 0,
-          product_price: parseFloat(item.product_price as string) || 0,
-          product_category: item.product_category || 'Unknown Category',
-          product_unit: 'Units', // Default value since product_unit doesn't exist in API
-          batch_no: String(item.batch_no || 'DEFAULT-BATCH'), // Ensure it's always a string
-        }));
-        setProducts(mappedProducts);
-      } else {
-        throw new Error('Invalid response format from API');
-      }
-    } catch (err) {
-      console.error('Fetch products error:', err);
-      setError('Failed to fetch products');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const filteredCustomers = customers.filter(customer => 
-    customer.business_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    customer.phone_number.includes(searchTerm) ||
-    customer.email.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
-  const filteredProducts = products.filter(product => 
-    product.product_name.toLowerCase().includes(productSearchTerm.toLowerCase()) ||
-    product.product_category.toLowerCase().includes(productSearchTerm.toLowerCase())
-  );
-
-  const addToCart = () => {
-    if (selectedProduct && quantity > 0) {
-      if (quantity > selectedProduct.current_quantity) {
-        setError(`Only ${selectedProduct.current_quantity} ${selectedProduct.product_unit} available in stock`);
-        return;
-      }
-
-      const existingItemIndex = cart.findIndex(item => item.productId === selectedProduct.id);
-      
-      if (existingItemIndex >= 0) {
-        // Update existing item
-        const updatedCart = [...cart];
-        const newQuantity = updatedCart[existingItemIndex].quantity + quantity;
-        if (newQuantity > selectedProduct.current_quantity) {
-          setError(`Only ${selectedProduct.current_quantity} ${selectedProduct.product_unit} available in stock`);
-          return;
-        }
-        updatedCart[existingItemIndex].quantity = newQuantity;
-        setCart(updatedCart);
-      } else {
-        // Add new item
-        setCart([...cart, {
-          id: Date.now().toString(),
-          productId: selectedProduct.product_id,
-          name: selectedProduct.product_name,
-          quantity,
-          price: selectedProduct.product_price,
-          unit: selectedProduct.product_unit,
-          batch_no: selectedProduct.batch_no,
-        }]);
-      }
-      
-      setSelectedProduct(null);
-      setQuantity(1);
-      setProductSearchTerm('');
-      setError(null);
-    }
-  };
-
-  const removeFromCart = (id: string) => {
-    setCart(cart.filter(item => item.id !== id));
-  };
-
-  const calculateSubtotal = () => {
-    return cart.reduce((total, item) => total + (item.quantity * item.price), 0);
-  };
-
-  const calculateTax = () => {
-    return calculateSubtotal() * (taxRate / 100); // Use taxRate state
-  };
-
-  const calculateTotal = () => {
-    return calculateSubtotal() + calculateTax();
-  };
-
-  const handleCheckout = () => {
-    if (selectedCustomer && cart.length > 0) {
-      // Directly create order without payment modal
-      handleCompletePayment();
+  const addToCart = (product: any) => {
+    // Check if item already exists in cart
+    const existingItemIndex = cart.findIndex(item => item.product_id === product.product_id);
+    
+    if (existingItemIndex >= 0) {
+      // Update quantity of existing item
+      const updatedCart = [...cart];
+      updatedCart[existingItemIndex].quantity += 1;
+      updatedCart[existingItemIndex].total = updatedCart[existingItemIndex].quantity * updatedCart[existingItemIndex].unit_price;
+      setCart(updatedCart);
     } else {
-      setError('Please select a customer and add items to cart');
+      // Add new item
+      const newItem = {
+        product_id: product.product_id,
+        product_name: product.product_name,
+        unit_price: parseFloat(product.product_price),
+        quantity: 1,
+        total: parseFloat(product.product_price)
+      };
+      setCart([...cart, newItem]);
     }
   };
 
-  const handleCompletePayment = async () => {
-    if (!selectedCustomer || cart.length === 0) {
-      setError('Please select a customer and add items to cart');
+  const updateCartItemQuantity = (index: number, newQuantity: number) => {
+    if (newQuantity <= 0) {
+      // Remove item if quantity is 0 or less
+      setCart(cart.filter((_, i) => i !== index));
+    } else {
+      const updatedCart = [...cart];
+      updatedCart[index].quantity = newQuantity;
+      updatedCart[index].total = newQuantity * updatedCart[index].unit_price;
+      setCart(updatedCart);
+    }
+  };
+
+  const removeFromCart = (index: number) => {
+    setCart(cart.filter((_, i) => i !== index));
+  };
+
+  const getTotal = () => {
+    return cart.reduce((sum, item) => sum + item.total, 0);
+  };
+
+  const handleCreateOrder = async () => {
+    if (!selectedCustomer) {
+      showError('Please select a customer');
+      return;
+    }
+
+    if (cart.length === 0) {
+      showError('Please add items to cart');
       return;
     }
 
     try {
-      setLoading(true);
-      setError(null);
-
+      setSubmitting(true);
       const orderData = {
-        customer_id: parseInt(selectedCustomer.id.toString()),
-        order_type: 'sale',
-        payment_method: paymentMethod, // Add payment method
-        payment_terms: 'pay_now', // Add required payment_terms field
+        customer_id: selectedCustomer,
         items: cart.map(item => ({
-          product_id: item.productId,
-          batch_no: String(item.batch_no || 'DEFAULT-BATCH'), // Ensure it's always a string
-          quantity_ordered: item.quantity,
-          wholesale_price: item.price,
-          discount_percentage: 0,
-          tax_percentage: taxRate
+          product_id: item.product_id,
+          quantity: item.quantity,
+          unit_price: item.unit_price
         })),
-        expected_delivery_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 7 days from now
-        notes: `Order created from POS`,
-        shipping_amount: 0,
-        delivery_type: 'delivery',
-        // Remove delivery details - they will be filled in Orders page
+        payment_method: paymentMethod,
+        delivery_type: deliveryType,
+        expected_delivery_date: expectedDeliveryDate?.toISOString().split('T')[0],
+        notes
       };
 
-      console.log('Creating order with data:', orderData);
+      const response = await apiCall('/api/wholesale/create-order', {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json'
+        },
+        data: orderData
+      });
 
-      const response = await wholesaleOrdersApi.create(orderData);
-      
-      if (response.data && response.data.success) {
-        setSuccess('Order created successfully! Redirecting to workflow...');
+      if (response.success) {
+        showSuccess('Order created successfully!');
         setCart([]);
-        setSelectedCustomer(null);
-        setError(null);
-        
-        // Redirect to workflow after a short delay
-        setTimeout(() => {
-          window.location.href = '/wholesale/workflow';
-        }, 2000);
-      } else {
-        setError(response.data?.message || 'Failed to create order');
+        setSelectedCustomer('');
+        setNotes('');
+        setExpectedDeliveryDate(new Date());
       }
-    } catch (err) {
-      console.error('Create order error:', err);
-      setError('Failed to create order. Please try again.');
+    } catch (error) {
+      showError('Failed to create order');
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   };
 
-  if (loading && (customers.length === 0 || products.length === 0)) {
-    return <LoadingSpinner overlay message="Loading POS system..." />;
+  const handleAddCustomer = async () => {
+    try {
+      const response = await apiCall('/api/wholesale/customers', {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        },
+        data: newCustomer
+      });
+
+      if (response.success) {
+        showSuccess('Customer added successfully!');
+        setShowAddCustomerModal(false);
+        setNewCustomer({
+          business_name: '',
+          contact_person: '',
+          phone_number: '',
+          email: '',
+          address: '',
+          city: '',
+          customer_type: 'pharmacy',
+          credit_limit_type: 'limited',
+          credit_limit: 1000000,
+          payment_terms: 'immediate',
+          status: 'active'
+        });
+        fetchData(); // Refresh customers list
+      } else {
+        showError(response.message || 'Failed to add customer');
+      }
+    } catch (error) {
+      console.error('Add customer error:', error);
+      showError('Failed to add customer');
+    }
+  };
+
+  const filteredProducts = products.filter(product =>
+    product.product_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    product.product_id.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  if (loading) {
+    return <LoadingSpinner overlay message="Loading POS..." />;
   }
 
   return (
     <Box sx={{ p: 3 }}>
-      <Typography variant="h5" component="h1" gutterBottom>
-        Wholesale Point of Sale
+      <Typography variant="h4" component="h1" gutterBottom>
+        Point of Sale
       </Typography>
 
-      {error && (
-        <Alert severity="error" sx={{ mb: 2 }}>
-          {error}
-        </Alert>
-      )}
-
-      {success && (
-        <Alert severity="success" sx={{ mb: 2 }}>
-          {success}
-        </Alert>
-      )}
-
-      <Box sx={{ display: 'flex', gap: 3, flexDirection: { xs: 'column', lg: 'row' } }}>
-        {/* Customer Selection */}
-        <Box sx={{ flex: 1 }}>
-          <Paper sx={{ p: 3 }}>
-            <Typography variant="subtitle1" component="h2" gutterBottom>
-              Select Customer
+      <Grid container spacing={3}>
+        {/* Products Section */}
+        <Grid item xs={12} md={8}>
+          <Paper sx={{ p: 3, mb: 3 }}>
+            <Typography variant="h6" gutterBottom>
+              Select Products
             </Typography>
             
+            {/* Search Products */}
             <TextField
               fullWidth
-              margin="normal"
-              label="Search customers..."
-              variant="outlined"
-              InputProps={{
-                startAdornment: (
-                  <SearchIcon className="h-5 w-5 text-gray-400" />
-                ),
-              }}
+              placeholder="Search products..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
+              InputProps={{
+                startAdornment: <SearchIcon sx={{ mr: 1, color: 'text.secondary' }} />,
+              }}
+              sx={{ mb: 2 }}
             />
 
-            <List sx={{ maxHeight: 200, overflow: 'auto', mt: 1 }}>
-              {filteredCustomers.length > 0 ? (
-                filteredCustomers.map(customer => (
-                  <ListItem key={customer.id} onClick={() => setSelectedCustomer(customer)} sx={{ cursor: 'pointer' }}>
-                    <ListItemText
-                      primary={customer.business_name}
-                      secondary={
-                        <>
-                          <Chip label={customer.customer_type} size="small" />
-                          <br />
-                          {customer.phone_number}
-                        </>
-                      }
-                    />
-                    {selectedCustomer?.id === customer.id && (
-                      <CheckCircleIcon className="h-4 w-4 text-indigo-500" />
-                    )}
-                  </ListItem>
-                ))
-              ) : (
-                <ListItem>
-                  <ListItemText primary="No customers found" />
-                </ListItem>
-              )}
-            </List>
-
-            {selectedCustomer && (
-              <Box sx={{ mt: 2, p: 2, bgcolor: '#e0f2fe' }}>
-                <Typography variant="subtitle2" component="h3">
-                  Selected Customer
-                </Typography>
-                <Typography variant="body2" color="text.primary">
-                  {selectedCustomer.business_name}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  {selectedCustomer.phone_number}
-                </Typography>
-              </Box>
-            )}
-          </Paper>
-        </Box>
-
-        {/* Product Selection and Cart */}
-        <Box sx={{ flex: 2 }}>
-          <Paper sx={{ p: 3 }}>
-            <Typography variant="subtitle1" component="h2" gutterBottom>
-              Add Products
-            </Typography>
-            
-            <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
-              <TextField
-                fullWidth
-                margin="normal"
-                label="Search products..."
-                variant="outlined"
-                InputProps={{
-                  startAdornment: (
-                    <SearchIcon className="h-5 w-5 text-gray-400" />
-                  ),
-                }}
-                value={productSearchTerm}
-                onChange={(e) => setProductSearchTerm(e.target.value)}
-              />
-              
-              <Box sx={{ display: 'flex', gap: 1 }}>
-                <TextField
-                  type="number"
-                  label="Qty"
-                  variant="outlined"
-                  value={quantity}
-                  onChange={(e) => setQuantity(parseInt(e.target.value) || 1)}
-                  inputProps={{ min: 1 }}
-                  sx={{ flex: 1 }}
-                />
-                <Button
-                  variant="contained"
-                  onClick={addToCart}
-                  disabled={!selectedProduct || quantity <= 0}
-                  startIcon={<AddIcon className="h-4 w-4" />}
-                >
-                  Add
-                </Button>
-              </Box>
-            </Box>
-
-            <List sx={{ maxHeight: 150, overflow: 'auto', mb: 2 }}>
-              {filteredProducts.length > 0 ? (
-                filteredProducts.map(product => (
-                  <ListItem key={product.id} onClick={() => setSelectedProduct(product)} sx={{ cursor: 'pointer' }}>
-                    <ListItemText
-                      primary={product.product_name}
-                      secondary={
-                        <>
-                          <Chip label={product.product_category} size="small" />
-                          <br />
-                          Tsh {product.product_price.toLocaleString()}
-                        </>
-                      }
-                    />
-                    {selectedProduct?.id === product.id && (
-                      <CheckCircleIcon className="h-4 w-4 text-indigo-500" />
-                    )}
-                  </ListItem>
-                ))
-              ) : (
-                <ListItem>
-                  <ListItemText primary="No products found" />
-                </ListItem>
-              )}
-            </List>
-
-            {/* Payment Method Selection */}
-            <Paper sx={{ p: 3, mb: 3 }}>
-              <Typography variant="h6" gutterBottom>
-                Payment Method
-              </Typography>
-              <FormControl fullWidth>
-                <InputLabel>Payment Method</InputLabel>
-                <Select
-                  value={paymentMethod}
-                  onChange={(e) => setPaymentMethod(e.target.value as 'cash' | 'mobile_money' | 'card')}
-                  label="Payment Method"
-                >
-                  <MenuItem value="cash">Cash</MenuItem>
-                  <MenuItem value="mobile_money">Mobile Money</MenuItem>
-                  <MenuItem value="card">Card</MenuItem>
-                </Select>
-              </FormControl>
-            </Paper>
-
-            {/* Cart */}
-            <Box sx={{ borderTop: '1px solid', borderColor: 'divider', pt: 2 }}>
-              <Typography variant="subtitle2" component="h3" gutterBottom>
-                Cart Items
-              </Typography>
-              {cart.length > 0 ? (
-                <List sx={{ maxHeight: 200, overflow: 'auto' }}>
-                  {cart.map(item => (
-                    <ListItem key={item.id} sx={{ justifyContent: 'space-between' }}>
-                      <ListItemText
-                        primary={item.name}
-                        secondary={`${item.quantity} x Tsh ${item.price.toLocaleString()}`}
-                      />
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Typography variant="body2" fontWeight="bold">
-                          Tsh {(item.quantity * item.price).toLocaleString()}
-                        </Typography>
-                        <Button
-                          variant="text"
-                          onClick={() => removeFromCart(item.id)}
-                          color="error"
-                          size="small"
-                        >
-                          <DeleteIcon className="h-4 w-4" />
-                        </Button>
-                      </Box>
-                    </ListItem>
-                  ))}
-                  
-                  <Divider sx={{ my: 1 }} />
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <Typography variant="body2">Subtotal:</Typography>
-                    <Typography variant="body2" fontWeight="bold">
-                      Tsh {calculateSubtotal().toLocaleString()}
-                    </Typography>
-                  </Box>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <Typography variant="body2">Tax ({taxRate}%):</Typography>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <TextField
-                        type="number"
-                        label="Tax Rate"
-                        variant="outlined"
-                        value={taxRate}
-                        onChange={(e) => setTaxRate(parseFloat(e.target.value) || 0)}
-                        inputProps={{ min: 0, max: 100 }}
-                        size="small"
-                        sx={{ width: 80 }}
-                      />
-                      <Typography variant="body2">Tsh {calculateTax().toLocaleString()}</Typography>
-                    </Box>
-                  </Box>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '1.125rem' }}>
-                    <Typography variant="body2">Total:</Typography>
-                    <Typography variant="body2" fontWeight="bold">
-                      Tsh {calculateTotal().toLocaleString()}
-                    </Typography>
-                  </Box>
-                  
-                  <Button
-                    variant="contained"
-                    onClick={handleCheckout}
-                    disabled={!selectedCustomer || cart.length === 0}
-                    startIcon={<CartIcon className="h-5 w-5" />}
-                    sx={{ mt: 2 }}
+            <Grid container spacing={2}>
+              {filteredProducts.map((product) => (
+                <Grid item xs={12} sm={6} md={4} key={product.id}>
+                  <Card 
+                    variant="outlined" 
+                    sx={{ cursor: 'pointer', '&:hover': { bgcolor: 'action.hover' } }}
+                    onClick={() => addToCart(product)}
                   >
-                    Proceed to Payment
-                  </Button>
-                </List>
-              ) : (
-                <Box sx={{ textAlign: 'center', py: 8 }}>
-                  <CartIcon className="h-12 w-12 mx-auto mb-2 text-gray-300" />
-                  <Typography variant="body2" color="text.secondary">
-                    No items in cart
+                    <CardContent>
+                      <Typography variant="subtitle1" fontWeight="bold">
+                        {product.product_name}
+                      </Typography>
+                      <Typography variant="body2" color="textSecondary">
+                        {product.product_category}
+                      </Typography>
+                      <Typography variant="body2" fontWeight="bold" color="primary">
+                        {formatCurrency(product.product_price)}
+                      </Typography>
+                      <Chip 
+                        label={`Stock: ${product.current_quantity}`} 
+                        size="small" 
+                        color={product.current_quantity > 0 ? 'success' : 'error'}
+                      />
+                    </CardContent>
+                  </Card>
+                </Grid>
+              ))}
+            </Grid>
+          </Paper>
+        </Grid>
+
+        {/* Cart Section */}
+        <Grid item xs={12} md={4}>
+          <Paper sx={{ p: 3, height: 'fit-content' }}>
+            <Typography variant="h6" gutterBottom>
+              <CartIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
+              Cart
+            </Typography>
+
+            {cart.length === 0 ? (
+              <Box sx={{ textAlign: 'center', py: 3 }}>
+                <CartIcon sx={{ fontSize: 48, color: 'text.secondary', mb: 1 }} />
+                <Typography variant="body2" color="textSecondary">
+                  No items in cart
+                </Typography>
+              </Box>
+            ) : (
+              <>
+                <TableContainer>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Item</TableCell>
+                        <TableCell align="right">Qty</TableCell>
+                        <TableCell align="right">Price</TableCell>
+                        <TableCell align="right">Total</TableCell>
+                        <TableCell align="center">Actions</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {cart.map((item, index) => (
+                        <TableRow key={item.product_id}>
+                          <TableCell>
+                            <Typography variant="body2" fontWeight="bold">
+                              {item.product_name}
+                            </Typography>
+                          </TableCell>
+                          <TableCell align="right">
+                            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
+                              <IconButton
+                                size="small"
+                                onClick={() => updateCartItemQuantity(index, item.quantity - 1)}
+                              >
+                                <RemoveIcon />
+                              </IconButton>
+                              <Typography sx={{ mx: 1 }}>{item.quantity}</Typography>
+                              <IconButton
+                                size="small"
+                                onClick={() => updateCartItemQuantity(index, item.quantity + 1)}
+                              >
+                                <AddIcon />
+                              </IconButton>
+                            </Box>
+                          </TableCell>
+                          <TableCell align="right">
+                            {formatCurrency(item.unit_price)}
+                          </TableCell>
+                          <TableCell align="right">
+                            {formatCurrency(item.total)}
+                          </TableCell>
+                          <TableCell align="center">
+                            <IconButton
+                              size="small"
+                              color="error"
+                              onClick={() => removeFromCart(index)}
+                            >
+                              <DeleteIcon />
+                            </IconButton>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+
+                <Box sx={{ mt: 2, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
+                  <Typography variant="h6" align="right">
+                    Total: {formatCurrency(getTotal())}
                   </Typography>
                 </Box>
-              )}
-            </Box>
+              </>
+            )}
           </Paper>
-        </Box>
-      </Box>
+        </Grid>
+      </Grid>
 
-      {/* Payment Modal */}
-      {/* The payment modal is removed as per the edit hint. */}
+      {/* Customer and Order Details */}
+      <Paper sx={{ p: 3, mt: 3 }}>
+        <Typography variant="h6" gutterBottom>
+          Customer & Order Details
+        </Typography>
+
+        <Grid container spacing={3}>
+          <Grid item xs={12} md={6}>
+            <FormControl fullWidth>
+              <InputLabel>Customer</InputLabel>
+              <Select
+                value={selectedCustomer}
+                onChange={(e) => setSelectedCustomer(e.target.value)}
+                label="Customer"
+              >
+                {customers.map((customer) => (
+                  <MenuItem key={customer.id} value={customer.id}>
+                    {customer.business_name} - {customer.contact_person}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <Button
+              variant="outlined"
+              startIcon={<AddIcon />}
+              onClick={() => setShowAddCustomerModal(true)}
+              sx={{ mt: 1 }}
+            >
+              Add New Customer
+            </Button>
+          </Grid>
+
+          <Grid item xs={12} md={6}>
+            <FormControl fullWidth>
+              <InputLabel>Payment Method</InputLabel>
+              <Select
+                value={paymentMethod}
+                onChange={(e) => setPaymentMethod(e.target.value)}
+                label="Payment Method"
+              >
+                <MenuItem value="cash">Cash</MenuItem>
+                <MenuItem value="mobile_money">Mobile Money</MenuItem>
+                <MenuItem value="credit_card">Credit Card</MenuItem>
+                <MenuItem value="bank_transfer">Bank Transfer</MenuItem>
+                <MenuItem value="cheque">Cheque</MenuItem>
+                <MenuItem value="other">Other</MenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
+
+          <Grid item xs={12} md={6}>
+            <FormControl fullWidth>
+              <InputLabel>Delivery Type</InputLabel>
+              <Select
+                value={deliveryType}
+                onChange={(e) => setDeliveryType(e.target.value)}
+                label="Delivery Type"
+              >
+                <MenuItem value="delivery">Delivery</MenuItem>
+                <MenuItem value="pickup">Customer Pickup</MenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
+
+          <Grid item xs={12} md={6}>
+            <LocalizationProvider dateAdapter={AdapterDateFns}>
+              <DatePicker
+                label="Expected Delivery Date"
+                value={expectedDeliveryDate}
+                onChange={setExpectedDeliveryDate}
+                slotProps={{ textField: { fullWidth: true } }}
+              />
+            </LocalizationProvider>
+          </Grid>
+
+          <Grid item xs={12}>
+            <TextField
+              fullWidth
+              label="Notes"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              multiline
+              rows={3}
+            />
+          </Grid>
+        </Grid>
+
+        <Box sx={{ mt: 3, display: 'flex', justifyContent: 'flex-end' }}>
+          <Button
+            variant="contained"
+            size="large"
+            startIcon={<PaymentIcon />}
+            onClick={handleCreateOrder}
+            disabled={submitting || cart.length === 0 || !selectedCustomer}
+          >
+            {submitting ? 'Creating Order...' : 'Create Order'}
+          </Button>
+        </Box>
+      </Paper>
+
+      {/* Add Customer Modal */}
+      <Dialog open={showAddCustomerModal} onClose={() => setShowAddCustomerModal(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Add New Customer</DialogTitle>
+        <DialogContent>
+          <Grid container spacing={2} sx={{ mt: 1 }}>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Business Name"
+                value={newCustomer.business_name}
+                onChange={(e) => setNewCustomer({...newCustomer, business_name: e.target.value})}
+                required
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                fullWidth
+                label="Contact Person"
+                value={newCustomer.contact_person}
+                onChange={(e) => setNewCustomer({...newCustomer, contact_person: e.target.value})}
+                required
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                fullWidth
+                label="Phone Number"
+                value={newCustomer.phone_number}
+                onChange={(e) => setNewCustomer({...newCustomer, phone_number: e.target.value})}
+                required
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                fullWidth
+                label="Email"
+                type="email"
+                value={newCustomer.email}
+                onChange={(e) => setNewCustomer({...newCustomer, email: e.target.value})}
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                fullWidth
+                label="City"
+                value={newCustomer.city}
+                onChange={(e) => setNewCustomer({...newCustomer, city: e.target.value})}
+                required
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Address"
+                multiline
+                rows={2}
+                value={newCustomer.address}
+                onChange={(e) => setNewCustomer({...newCustomer, address: e.target.value})}
+                required
+              />
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowAddCustomerModal(false)}>Cancel</Button>
+          <Button onClick={handleAddCustomer} variant="contained">
+            Add Customer
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };
 
-export default Pos;
+export default Pos; 

@@ -37,7 +37,6 @@ class WholesaleCustomer extends Model
         'current_balance' => 'decimal:2',
     ];
 
-    // Relationships
     public function orders()
     {
         return $this->hasMany(WholesaleOrder::class, 'customer_id');
@@ -52,73 +51,4 @@ class WholesaleCustomer extends Model
     {
         return $this->hasMany(WholesaleDelivery::class, 'customer_id');
     }
-
-    // Scopes
-    public function scopeActive($query)
-    {
-        return $query->where('status', 'active');
-    }
-
-    public function scopeByType($query, $type)
-    {
-        return $query->where('customer_type', $type);
-    }
-
-    // Methods
-    public function getFullAddressAttribute()
-    {
-        $address = $this->address;
-        if ($this->city) {
-            $address .= ', ' . $this->city;
-        }
-        if ($this->state) {
-            $address .= ', ' . $this->state;
-        }
-        if ($this->postal_code) {
-            $address .= ' ' . $this->postal_code;
-        }
-        if ($this->country) {
-            $address .= ', ' . $this->country;
-        }
-        return $address;
-    }
-
-    public function getAvailableCreditAttribute()
-    {
-        if ($this->credit_limit_type === 'unlimited') {
-            return null; // Unlimited credit
-        }
-        return $this->credit_limit - $this->current_balance;
-    }
-
-    public function canPlaceOrder($amount)
-    {
-        if ($this->status !== 'active') {
-            return false;
-        }
-
-        if ($this->credit_limit_type === 'unlimited') {
-            return true;
-        }
-
-        return ($this->current_balance + $amount) <= $this->credit_limit;
-    }
-
-    public function updateBalance($amount)
-    {
-        $this->current_balance += $amount;
-        $this->save();
-    }
-
-    // Boot method to generate customer code
-    protected static function boot()
-    {
-        parent::boot();
-
-        static::creating(function ($customer) {
-            if (empty($customer->customer_code)) {
-                $customer->customer_code = 'CUST-' . date('Y') . '-' . str_pad(static::count() + 1, 4, '0', STR_PAD_LEFT);
-            }
-        });
-    }
-}
+} 

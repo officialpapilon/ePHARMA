@@ -2,39 +2,29 @@ import React from 'react';
 import { useLocation } from 'react-router-dom';
 import PointOfSaleIcon from '@mui/icons-material/PointOfSale';
 import PeopleIcon from '@mui/icons-material/People';
-import Inventory2Icon from '@mui/icons-material/Inventory2';
 import AssessmentIcon from '@mui/icons-material/Assessment';
-import AssignmentTurnedInIcon from '@mui/icons-material/AssignmentTurnedIn';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import LocalShippingIcon from '@mui/icons-material/LocalShipping';
-import PaymentIcon from '@mui/icons-material/Payment';
-import TimelineIcon from '@mui/icons-material/Timeline';
-import AssignmentIcon from '@mui/icons-material/Assignment';
+import BarChartIcon from '@mui/icons-material/BarChart';
 import Layout from '../../components/layout/Layout/Layout';
 import { NavItem, BreadcrumbItem } from '../../types';
-import { ROUTES } from '../../utils/constants';
 
 const WholesaleLayout: React.FC = () => {
   const location = useLocation();
-
   const navItems = [
-    { label: 'Point of Sale', path: ROUTES.WHOLESALE.POS, icon: <PointOfSaleIcon /> },
-    { label: 'Workflow', path: ROUTES.WHOLESALE.WORKFLOW, icon: <TimelineIcon /> },
-    { label: 'Orders', path: ROUTES.WHOLESALE.ORDERS, icon: <ShoppingCartIcon /> },
-    { label: 'Customers', path: ROUTES.WHOLESALE.CUSTOMERS, icon: <PeopleIcon /> },
-    { label: 'Deliveries', path: ROUTES.WHOLESALE.DELIVERIES, icon: <LocalShippingIcon /> },
-    { label: 'Delivery Management', path: ROUTES.WHOLESALE.DELIVERY_MANAGEMENT, icon: <AssignmentIcon /> },
-    { label: 'Payments', path: ROUTES.WHOLESALE.PAYMENTS, icon: <PaymentIcon /> },
-    { label: 'Items Manager', path: ROUTES.WHOLESALE.ITEMS_MANAGER, icon: <Inventory2Icon /> },
-    { label: 'Stock Taking', path: ROUTES.WHOLESALE.STOCK_TAKING, icon: <AssignmentTurnedInIcon /> },
-    { label: 'Reports', path: ROUTES.WHOLESALE.REPORT, icon: <AssessmentIcon /> },
+    { label: 'Dashboard', path: '/wholesale', icon: <AssessmentIcon /> },
+    { label: 'Point of Sale', path: '/wholesale/pos', icon: <PointOfSaleIcon /> },
+    { label: 'Orders', path: '/wholesale/orders', icon: <ShoppingCartIcon /> },
+    { label: 'Deliveries', path: '/wholesale/deliveries', icon: <LocalShippingIcon /> },
+    { label: 'Customers', path: '/wholesale/customers', icon: <PeopleIcon /> },
+    { label: 'Reports', path: '/wholesale/reports', icon: <BarChartIcon /> },
   ] as NavItem[];
 
   const getBreadcrumbs = (): BreadcrumbItem[] => {
     const pathSegments = location.pathname.split('/').filter(Boolean);
     const breadcrumbs: BreadcrumbItem[] = [
-      { label: 'Home', path: ROUTES.HOME },
-      { label: 'Wholesale', path: ROUTES.WHOLESALE.BASE },
+      { label: 'Home', path: '/' },
+      { label: 'Wholesale', path: '/wholesale' },
     ];
 
     if (pathSegments.length > 1) {
@@ -52,9 +42,8 @@ const WholesaleLayout: React.FC = () => {
       navItems={navItems}
       title="Wholesale"
       breadcrumbs={getBreadcrumbs()}
-      headerTitle="Wholesale Operations"
     />
   );
 };
 
-export default WholesaleLayout;
+export default WholesaleLayout; 
